@@ -1,0 +1,105 @@
+grammar Jute
+ 
+    rule jute
+        (space* jmodule*) {
+
+                captures[:jmodule].inject(Hash.new()) do |h,m|
+                   h[m.name.value] = m.classes
+                   h
+                end
+        }   
+    end
+
+    rule jmodule
+       ('module' (space)1* name:identifier space* '{' space* jclass* '}' space*)  {
+           
+            def value
+                [ name.value, classes() ]
+            end
+
+            def classes
+               captures[:jclass].inject(Hash.new()) do |h,c|
+                 h[c.name.value] = c.jfields
+                 h
+               end
+            end
+
+       }
+    end
+
+    rule jclass
+       ('class' (space)1* name:class_identifier space* '{' space* jfield* '}' space*) {
+
+            def jfields
+               # field order is important!
+               captures[:jfield].collect() do |f| 
+                    f.value 
+               end
+            end
+       }
+    end
+
+    rule jfield
+        (type name:identifier space* ';' space*)  {
+            [ name.value, type.value ] 
+        }
+    end
+    
+    rule type
+      (parameterized_type | non_parameterized_type)
+    end
+
+    rule parameterized_type
+        vector 
+    end
+
+    rule non_parameterized_type
+        (basic_type (space)1*)
+        {
+            basic_type.value 
+        }
+    end
+
+    rule basic_type
+        (primitive_type | nested_record) 
+    end
+
+    rule primitive_type
+       ('int' | 'long' | 'boolean' | 'byte' | 'float' | 'double' | 'ustring' | 'buffer') {
+            to_sym
+       }
+    end
+
+    rule vector
+        ('vector' space* '<' space* vtype:(basic_type | parameterized_type) space* '>' space*) {
+            [ :vector, vtype.value ] 
+        }
+    end
+    
+    rule nested_record
+        identifier  {
+            components = split(".") 
+            module_name = components[0..-2].join(".") if components.length > 1
+            class_name = components.last
+            [ :record, module_name, class_name ]
+        }
+    end
+
+    rule space
+       [ \t\r\n] | line_comment | block_comment
+    end
+
+    rule line_comment
+         '//' (!eol .)* (eol | eof) space* 
+    end
+
+    rule block_comment
+        '/*' (!'*/' .)* '*/' space*
+    end
+   
+    rule class_identifier [a-zA-Z0-9_]1* end
+    rule identifier [a-zA-Z0-9_.]1* end
+    rule eof !. end
+    rule eol [\r\n] end
+    
+end
