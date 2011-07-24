@@ -2,6 +2,7 @@
 
 require 'rubygems'
 require 'hoe'
+require './yard_ext/enum_handler'
 
 # Hoe.plugin :compiler
 # Hoe.plugin :gem_prelude_sucks
@@ -12,7 +13,9 @@ Hoe.plugin :git
 Hoe.plugin :yard
 
 Hoe.spec 'zkruby' do
+  self.readme_file="README.rdoc"
   developer('Grant Gardner', 'grant@lastweekend.com.au')
+  extra_deps << [ 'slf4r' , '>= 0.4.2' ]
 end
 
 # vim: syntax=ruby
