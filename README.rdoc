@@ -6,13 +6,35 @@
 
 Pure ruby client for ZooKeeper
 
-== FEATURES/PROBLEMS:
+== FEATURES
 
-*  JRuby does not need a different binding - works over eventmachine or rubyio
+Supports full ZooKeeper API, synchronous or asynchronous style, watches etc.. with implementations over EventMachine or plain old Ruby IO/Threads
+
+Advantages:
+* Rubyst API - with block is asynchronous, without block is synchronous
+* Avoids conflicts between various Ruby threading models and the C/Java apis
+* Same code for JRuby or MRI
+* Connection bindings for pure ruby IO and eventmachine, or roll your own
+
+Disadvantages:
+* Duplicated code from Java/C libraries, particularly around herd effect protection
+* Maintain in parallel with breaking changes in protocol which are possibly more likely
+* than breaking changes in the client API
+* Probably not as optimised in terms of performance (but your client code is ruby anyway) 
+* Not production tested (yet- do you want to be the first?)  
+
 
 == SYNOPSIS:
 
+0. Configure Slf4R Logging https://rubygems.org/gems/slf4r
+1. Require a zkruby binding
+2. Get a connection {ZooKeeper.connect}
+3. Make requests on the returned {ZooKeeper::Client}
+
+  require 'slf4r/ruby_logging' 
   require 'zkruby'
+
+  # Using ruby threads and sockets
   require 'zk/rubyio'
     
   zk = ZooKeeper.connect("localhost:2181")
@@ -25,7 +47,7 @@ Pure ruby client for ZooKeeper
   # Watches
   watch = lambda { |state,event,path| puts "Watch fired #{state} #{event} #{path}" }
 
-  zk.exists("/aPath",watch)
+  stat,data = zk.get("/aPath",watch)
 
   # OR with EventMachine
   require 'eventmachine'

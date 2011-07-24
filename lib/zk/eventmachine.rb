@@ -1,32 +1,24 @@
 
 require 'eventmachine'
-#require 'fiber'
+#TODO Looks like this is needed for MRI but fails on JRuby
+#require 'fiber' 
 module ZooKeeper
    module EventMachine
     
-     def self.connect(addresses,options,&blk)
-         session = Session.new(addresses,options)
-         session.connection_factory = ConnectionFactory
-         session.start(&blk)
-         Client.new(session)
-         Fiber.new(blk).resume(session) if block_given?
-         return 
-     end
-
      class ClientConn < ::EM::Connection
         include Protocol
-        
+        include Slf4r::Logger        
         def initialize(session,connect_timeout)
             @session = session
             @connect_timeout = connect_timeout
             set_pending_connect_timeout(connect_timeout)
             rescue Exception => ex
-                puts ex.message
+                logger.warn("Exception in initialize",ex)
         end
 
         def post_init()
             rescue Exception => ex
-                puts ex.message
+                logger.warn("Exception in post_init",ex)
         end
 
         def connection_completed()
@@ -37,8 +29,7 @@ module ZooKeeper
             @timer = EM.add_timer(@connect_timeout) do
                 if @session.connected?
                     # Start the ping timer 
-                    ping = @session.ping_interval
-                    puts "Starting ping timer #{ping}"
+                    ping = @session.ping_interval 
                     @timer = EM.add_periodic_timer ( ping ) do
                         case @ping
                            when 1 then @session.ping()
@@ -52,7 +43,7 @@ module ZooKeeper
             end
 
             rescue Exception => ex
-                puts ex.message
+                logger.warn("Exception in connection_completed",ex)
         end
 
         def receive_records(packet_io)
@@ -68,7 +59,7 @@ module ZooKeeper
             EM.cancel_timer(@timer) if @timer
             @session.disconnected()
             rescue Exception => ex
-                puts ex.message
+                logger.warn("Exception in unbind",ex)
         end
     
      end
@@ -88,14 +79,6 @@ module ZooKeeper
             @session.start()
         end
 
-        # After delay seconds create a connection to host:port
-        # Once ready callback session.prime_connection(conn)
-        # If socket is not ready to accept data within timeout seconds then callback session.disconnect()
-        # @param host
-        # @param port
-        # @param delay - connection delay in seconds
-        # @param timeout - the connection timeout in seconds
-        # @param session - the session object to callback
         def connect(host,port,delay,timeout)
             EM.add_timer(delay) do
                 EM.connect(host,port,ZooKeeper::EventMachine::ClientConn,@session,timeout)
@@ -135,7 +118,7 @@ module ZooKeeper
         end
      end
 
-  end #module ZooKeeper::EventMachinas
+  end #module ZooKeeper::EventMachine
 end #module ZooKeeper
 
 ZooKeeper::BINDINGS << ZooKeeper::EventMachine::Binding

@@ -27,15 +27,17 @@ module ZooKeeper::RubyIO
   
   class Connection
     include ZooKeeper::Protocol
-    include ZooKeeper::Logger
+    include Slf4r::Logger
     include Socket::Constants
+    
     def initialize(host,port,timeout,session)
       @session = session
       @write_queue = Queue.new()
 
       # JRuby cannot do non-blocking connects, which means there is
       # no way to properly implement the connection-timeout
-      #See http://jira.codehaus.org/browse/JRUBY-5165 
+      # See http://jira.codehaus.org/browse/JRUBY-5165 
+      # In any case this should be encapsulated in TCPSocket.open(host,port,timeout)
       if RUBY_PLATFORM == "java"
         sock = TCPSocket.new(host,port.to_i)
       else
@@ -51,7 +53,7 @@ module ZooKeeper::RubyIO
           begin
             sock.connect_nonblock(sockaddr)
           rescue Errno::ECONNREFUSED
-            log.warn("Connection refused to #{ host }:#{ port }")
+            logger.warn("Connection refused to #{ host }:#{ port }")
             sock = nil
           rescue Errno::EISCONN
           end
@@ -75,11 +77,11 @@ module ZooKeeper::RubyIO
           data = @write_queue.pop()
           if socket.write(data) != data.length()
             #TODO - will this really ever happen
-            log.warn("Incomplete write!")
+            logger.warn("Incomplete write!")
           end
         end
       rescue Exception => ex
-        log.warn("Exception in write loop",ex)
+        logger.warn("Exception in write loop",ex)
         disconnect()
       end
       
@@ -104,7 +106,7 @@ module ZooKeeper::RubyIO
             end
           end
         rescue Exception => ex
-          log.warn("Exception in readloop",ex) unless socket.eof?
+          logger.warn("Exception in readloop",ex) unless socket.eof?
           break;
         end
       end
@@ -117,7 +119,7 @@ module ZooKeeper::RubyIO
       socket.close if socket
     rescue Exception => ex
       #oh well
-      log.debug("Exception closing socket",ex)
+      logger.debug("Exception closing socket",ex)
     end
     
     # Protocol requirement
@@ -128,7 +130,7 @@ module ZooKeeper::RubyIO
   end #Class connection
   
   class Binding
-    include ZooKeeper::Logger
+    include Slf4r::Logger
     attr_reader :session
     def self.available?
       true
@@ -139,9 +141,9 @@ module ZooKeeper::RubyIO
     
     def start(session)
       @session = session
-      # start the event thread
       @session.extend(MonitorMixin)
       
+      # start the event thread
       Thread.new() do
         loop do
           begin
@@ -150,11 +152,12 @@ module ZooKeeper::RubyIO
             callback,*args = queued
             callback.call(*args)
           rescue Exception => ex
-            log.debug( "Exception in event thread", ex )
+            logger.debug( "Exception in event thread", ex )
           end
         end
       end
-      
+     
+      # and the read thread
       Thread.new() do
         begin
           conn = session.synchronize { session.start(); session.conn() } # will invoke connect 
@@ -166,7 +169,7 @@ module ZooKeeper::RubyIO
           #event of death
           @event_queue.push(nil)
         rescue Exception => ex
-          log.debug( "Exception in session thread", ex )
+          logger.debug( "Exception in session thread", ex )
         end
       end
     end
@@ -207,7 +210,6 @@ module ZooKeeper::RubyIO
       end
       
       return op_result
-      
     end
     
     def close(&blk)

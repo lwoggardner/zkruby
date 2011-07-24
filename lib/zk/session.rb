@@ -1,26 +1,12 @@
+require 'set'
 module ZooKeeper
     
-    class WatchEvent
-        include Enumeration
-        enum :none,-1,[]
-        enum :node_created, 1, [ :data, :exists ]
-        enum :node_deleted, 2, [ :data, :children ]
-        enum :node_data_changed, 3, [ :data, :exists ]
-        enum :node_children_changed, 4, [ :children ]
-        
-        attr_reader :watch_types
-        def initialize(watch_types)
-            @watch_types = watch_types
-        end
-    end
-
-  
      # Represents an session that may span connections
      class Session
 
         DEFAULT_TIMEOUT = 4
         DEFAULT_CONNECT_DELAY = 0.2
-        include ZooKeeper::Logger
+        include Slf4r::Logger
 
         attr_reader :ping_interval
         attr_reader :conn
@@ -92,14 +78,14 @@ module ZooKeeper
            when :connected
               process_reply(io)
            else
-              log.warn { "Receive packet for closed session #{@keeper_state}" }
+              logger.warn { "Receive packet for closed session #{@keeper_state}" }
            end
         end
 
         # Connection API - called when no data has been received for #ping_interval
         def ping()
             if @keeper_state == :connected
-                log.debug { "Ping send" }
+                logger.debug { "Ping send" }
                 hdr = Proto::RequestHeader.new(:xid => -2, :type => 11)
                 @conn.send_records(hdr)
             end
@@ -108,7 +94,7 @@ module ZooKeeper
         # Connection API - called when the connection has dropped from either end
         def disconnected()
            @conn = nil
-           log.info { "Disconnected id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
+           logger.info { "Disconnected id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
           
            # We keep trying to reconnect until the session expiration time is reached
            @disconnect_time = Time.now if @keeper_state == :connected
@@ -131,7 +117,7 @@ module ZooKeeper
             raise ProtocolError, "Already started!" unless @keeper_state.nil?
             @keeper_state = :disconnected
             @disconnect_time = Time.now
-            log.debug ("Starting new zookeeper client session")
+            logger.debug ("Starting new zookeeper client session")
             reconnect()
         end
        
@@ -204,7 +190,7 @@ module ZooKeeper
 
             delay = rand() * @max_connect_delay
             
-            log.debug { "Connecting id=#{@session_id} to #{host}:#{port} with delay=#{delay}, timeout=#{@connect_timeout}" } 
+            logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with delay=#{delay}, timeout=#{@connect_timeout}" } 
             binding.connect(host,port,delay,@connect_timeout)
         end
 
@@ -215,9 +201,9 @@ module ZooKeeper
            invoke_response(*@close_packet.error(:session_expired)) if @close_packet
 
            if @client_state == :closed
-              log.info { "Session closed id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
+              logger.info { "Session closed id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
            else
-              log.warn { "Session expired id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
+              logger.warn { "Session expired id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
            end
 
            @keeper_state = :expired
@@ -235,9 +221,9 @@ module ZooKeeper
                 @ping_interval = (result.time_out / 1000).to_f * 2.0 / 7.0
                 @session_id = result.session_id
                 @session_passwd = result.passwd
-                log.info { "Connected session_id=#{@session_id}, timeout=#{result.time_out}, ping=#{@ping_interval}" }
+                logger.info { "Connected session_id=#{@session_id}, timeout=#{result.time_out}, ping=#{@ping_interval}" }
 
-                log.debug { "Sending #{@pending_queue.length} queued packets" }
+                logger.debug { "Sending #{@pending_queue.length} queued packets" }
                 @pending_queue.each { |p| send_packet(p) }
                 
                 queue_close_packet_if_necessary()
@@ -246,11 +232,11 @@ module ZooKeeper
         
         def process_reply(packet_io)
               header = Proto::ReplyHeader.read(packet_io)
-              log.debug { "Reply header: #{header.inspect}" }
+              logger.debug { "Reply header: #{header.inspect}" }
 
               case header.xid.to_i
               when -2
-                log.debug { "Ping reply" }
+                logger.debug { "Ping reply" }
               when -4
                 #TODO Auth reply (which may fail)
               when -1
@@ -261,11 +247,11 @@ module ZooKeeper
                 # A normal packet reply. They should come in the order we sent them
                 # so we just match it to the packet at the front of the queue
                 packet = @pending_queue.shift
-                log.debug { "Reply packet: #{packet.inspect}" }
+                logger.debug { "Reply packet: #{packet.inspect}" }
 
                 if (packet.xid.to_i != header.xid.to_i)
 
-                   log.error { "Bad XID! expected=#{packet.xid}, received=#{header.xid}" }
+                   logger.error { "Bad XID! expected=#{packet.xid}, received=#{header.xid}" }
 
                    # Treat this like a dropped connection, and then force the connection
                    # to be dropped. But wait for the connection to notify us before
@@ -276,7 +262,7 @@ module ZooKeeper
                     @last_zxid_seen = header.zxid
                     
                     callback, response, watch_type  = packet.result(header.err.to_i)
-                    log.debug { "Reply response: #{response.inspect}" } 
+                    logger.debug { "Reply response: #{response.inspect}" } 
                     invoke_response(callback,response,packet_io)
 
                     @watches[watch_type][packet.path] << packet.watcher if (watch_type)
@@ -316,7 +302,7 @@ module ZooKeeper
 
         def queue_close_packet_if_necessary
             if @pending_queue.empty? && @keeper_state == :connected && @close_packet
-                log.debug { "Sending close packet!" }
+                logger.debug { "Sending close packet!" }
                 @client_state = :closed
                 queue_packet(@close_packet)
                 @close_packet = nil
@@ -354,7 +340,7 @@ module ZooKeeper
 
         def queue_packet(packet)
             @pending_queue.push(packet)
-            log.debug { "Queued: #{packet.inspect}" }
+            logger.debug { "Queued: #{packet.inspect}" }
 
             if @keeper_state == :connected
                 send_packet(packet)
