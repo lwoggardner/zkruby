@@ -11,15 +11,15 @@ Pure ruby client for ZooKeeper
 Supports full ZooKeeper API, synchronous or asynchronous style, watches etc.. with implementations over EventMachine or plain old Ruby IO/Threads
 
 Advantages:
-* Rubyst API - with block is asynchronous, without block is synchronous
+* Rubyist API - with block is asynchronous, without block is synchronous
 * Avoids conflicts between various Ruby threading models and the C/Java apis
 * Same code for JRuby or MRI
 * Connection bindings for pure ruby IO and eventmachine, or roll your own
 
 Disadvantages:
 * Duplicated code from Java/C libraries, particularly around herd effect protection
-* Maintain in parallel with breaking changes in protocol which are possibly more likely
-* than breaking changes in the client API
+* Maintain in parallel with breaking changes in protocol which are possibly more likely 
+  than breaking changes in the client API
 * Probably not as optimised in terms of performance (but your client code is ruby anyway) 
 * Not production tested (yet- do you want to be the first?)  
 
@@ -45,7 +45,7 @@ Disadvantages:
   zk.exists("/aPath) { |stat| puts stat.inspect }
 
   # Watches
-  watch = lambda { |state,event,path| puts "Watch fired #{state} #{event} #{path}" }
+  watch = lambda { |state,path,event| puts "Watch fired #{state} #{path} #{event}" }
 
   stat,data = zk.get("/aPath",watch)
 
@@ -59,14 +59,14 @@ Disadvantages:
         begin
             zk = ZooKeeper.connect("localhost:2181")
             #Sync
-            path = zk.create("/aPath/mynode",ZK::ACL_ANyONE_UNSAFE,:ephemeral,:sequential) 
+            path = zk.create("/aPath/mynode",ZK::ACL_ANYONE_UNSAFE,:ephemeral,:sequential) 
 
             #Async
             zk.get(path) do |stat,data|
                puts "#{stat.inspect} #{data}" 
             end
             
-        rescue ZooKeeperException => zkex
+        rescue ZooKeeperError => zkex
             puts zkex.message
         end
 
@@ -77,7 +77,7 @@ Disadvantages:
 == REQUIREMENTS:
 
 * A ZooKeeper cluster to connect to
-* Ruby 1.9 
+* Ruby 1.9 (but a backport should be straightforward)
 
 == INSTALL:
 
