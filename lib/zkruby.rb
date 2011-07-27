@@ -240,6 +240,7 @@ module ZooKeeper
     def watcher=(watcher)
       @binding.session.watcher=watcher
     end
+
     # Retrieve the list of children at the given path
     # @overload children(path,watch=nil)
     #    @param [String] path 
@@ -252,6 +253,7 @@ module ZooKeeper
     #    @yieldparam [Array<String>] children the list of child nodes at path 
     def children(path,watch=nil,&callback)
       return synchronous_call(:children,path,watch) unless block_given?
+      path = chroot(path) 
       
       req = Proto::GetChildren2Request.new(:path => path, :watch => watch)
       queue_request(req,:get_children2,12,Proto::GetChildren2Response) do | response |
@@ -279,11 +281,12 @@ module ZooKeeper
         raise ArgumentError, "Unknown create option #{ opt }" unless CREATE_OPTS.has_key?(opt)
         flags | CREATE_OPTS[opt]
       }
+      path = chroot(path) 
      
       req = Proto::CreateRequest.new(:path => path, :data => data, :acl => acl, :flags => flags)
 
       queue_request(req,:create,1,Proto::CreateResponse) do | response |
-        blk.call(response.path)
+        blk.call(unchroot(response.path))
       end
     end
     
@@ -299,6 +302,7 @@ module ZooKeeper
     #   @yieldparam [String] data Content at path
     def get(path,watch=nil,&blk)
       return synchronous_call(:get,path,watch) unless block_given?
+      path = chroot(path) 
       
       req = Proto::GetDataRequest.new(:path => path, :watch => watch)
       
@@ -318,6 +322,7 @@ module ZooKeeper
     #   @yieldparam [Data:Stat] stat Stat of the path or nil if the path did not exist
     def exists(path,watch=nil,&blk)
       return synchronous_call(:exists,path,watch)[0] unless block_given?
+      path = chroot(path) 
       
       req = Proto::ExistsRequest.new(:path => path, :watch => watch)
       queue_request(req,:exists,3,Proto::ExistsResponse,:exists,watch,ExistsPacket) do | response |
@@ -338,6 +343,7 @@ module ZooKeeper
     #    @yield  [] callback invoked if delete is successful
     def delete(path,version,&blk)
       return synchronous_call(:delete,path,version) unless block_given?
+      path = chroot(path) 
       
       req = Proto::DeleteRequest.new(:path => path, :version => version)
       queue_request(req,:delete,2) do |response|
@@ -357,6 +363,7 @@ module ZooKeeper
     #    @yieldparam [Data::Stat] stat new stat of path
     def set(path,data,version,&blk)
       return synchronous_call(:set,path,data,version)[0] unless block_given?
+      path = chroot(path) 
       
       req = Proto::SetDataRequest.new(:path => path, :data => data, :version => version)
       queue_request(req,:set_data,5,Proto::SetDataResponse) do | response |
@@ -374,6 +381,7 @@ module ZooKeeper
     #   @yieldparam [Array<Data::ACL>] list of acls applying to path
     def get_acl(path,&blk)
       return synchronous_call(:get_acl,path)[0] unless block_given?
+      path = chroot(path) 
       
       req = Proto::GetACLRequest.new(:path => path)
       queue_request(req,:get_acl,6,Proto::GetACLResponse) do | response |
@@ -393,6 +401,7 @@ module ZooKeeper
     #    @yieldparam [Data::Stat] new stat for path if successful
     def set_acl(path,acl,version,&blk)
       return synchronous_call(:set_acl,acl,version)[0] unless block_given?
+      path = chroot(path) 
       
       req = Proto::SetACLRequest.new(:path => path, :acl => acl, :version => version)
       queue_request(req,:set_acl,7,Proto::SetACLResponse) do | response |
@@ -409,12 +418,12 @@ module ZooKeeper
     # @overload sync(path)
     #   @return [QueuedOp] asynchronous operation
     #   @yieldparam [String] path 
-    def sync(path)
+    def sync(path,&blk)
       return synchronous_call(:sync,path)[0] unless block_given?
-      
+      path = chroot(path) 
       req = Proto::SyncRequest.new(:path => path)
       queue_request(req,:sync,9,Proto::SyncResponse) do | response |
-        blk.call(response.path)
+        blk.call(unchroot(response.path))
       end
     end
     
@@ -437,7 +446,14 @@ module ZooKeeper
     def queue_request(*args,&blk)
       @binding.queue_request(*args,&blk)
     end
-    
+
+    def chroot(path)
+        @binding.session.chroot(path)
+    end
+
+    def unchroot(path)
+        @binding.session.unchroot(path)
+    end
   end
 end  
 ZK=ZooKeeper

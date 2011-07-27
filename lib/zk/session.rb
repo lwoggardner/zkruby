@@ -41,7 +41,17 @@ module ZooKeeper
             @watcher = nil
 
         end
-     
+    
+        def chroot(path)
+            return @chroot + path
+        end
+
+        def unchroot(path)
+            return path unless path
+            path.slice(@chroot.length..-1)
+        end
+
+
         # Connection API - testing whether to send a ping
         def connected?()
             @keeper_state == :connected
@@ -176,6 +186,7 @@ module ZooKeeper
             @connect_timeout = options.fetch(:connect_timeout,@timeout * 1.0 / 7.0)
             @scheme = options.fetch(:scheme,nil)
             @auth = options.fetch(:auth,nil)
+            @chroot = options.fetch(:chroot,"").chomp("/")
         end
 
         def reconnect()
@@ -332,7 +343,6 @@ module ZooKeeper
             if watches.empty?
                 logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
             end
-
             watches.each { | watch | invoke_watch(watch,state,path,event) }      
              
         end
@@ -347,7 +357,7 @@ module ZooKeeper
                    raise ProtocolError("Bad watcher #{watch}")
                 end
 
-                binding.invoke(callback,state,path,event)
+                binding.invoke(callback,state,unchroot(path),event)
         end
 
         def clear_pending_queue(reason)
@@ -409,7 +419,7 @@ module ZooKeeper
         def send_packet(packet)
             records = [] << Proto::RequestHeader.new(:xid => packet.xid, :_type => packet.opcode)
             records << packet.request if packet.request
-            @conn.send_records(*records)
+            conn.send_records(*records)
         end
 
 

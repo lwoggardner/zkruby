@@ -4,7 +4,7 @@
 
 == DESCRIPTION:
 
-Pure ruby client for ZooKeeper
+Pure ruby client for ZooKeeper (http://zookeeper.apache.org)
 
 == FEATURES
 
@@ -26,7 +26,7 @@ Disadvantages:
 
 == SYNOPSIS:
 
-0. Configure Slf4R Logging https://rubygems.org/gems/slf4r
+0. Configure Slf4R Logging (https://rubygems.org/gems/slf4r)
 1. Require a zkruby binding
 2. Get a connection {ZooKeeper.connect}
 3. Make requests on the returned {ZooKeeper::Client}
