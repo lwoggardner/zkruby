@@ -8,7 +8,7 @@ module Enumeration
      when Fixnum
         to_int == other
      else
-        super == other
+        super(other)
      end
   end
 
@@ -39,6 +39,10 @@ module Enumeration
   module ClassMethods
     def get(ref)
         ref.kind_of?(Enumeration) ? ref : @enums[ref]
+    end
+
+    def fetch(ref)
+        ref.kind_of?(Enumeration) ? ref : @enums.fetch(ref)
     end
 
     def enum(name,index,*args)

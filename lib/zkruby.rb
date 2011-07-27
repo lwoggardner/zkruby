@@ -10,9 +10,8 @@ require 'zk/session'
 # It implements the client side of the ZooKeeper TCP protocol directly rather
 #   than calling the zk client libraries
 #
-#
-#
 module ZooKeeper
+
   # Use the ZooKeeper version and last digit for us
   VERSION = "3.3.3.0"
 
@@ -155,6 +154,8 @@ module ZooKeeper
   # @option options [String] :chroot chroot path.
   #    All client calls will be made relative to this path (TODO: Not Yet Implemented)
   # @option options [Watcher] :watch the default watcher
+  # @option options [String] :scheme the authentication scheme
+  # @option options [String] :auth   the authentication credentials
   # @return [Client] 
   def self.connect(addresses,options={})
     # TODO: take a block and do a bunch of zk things in it before calling close
@@ -184,6 +185,15 @@ module ZooKeeper
         enum :node_deleted, 2, [ :data, :children ]
         enum :node_data_changed, 3, [ :data, :exists ]
         enum :node_children_changed, 4, [ :children ]
+   end
+
+   class KeeperState
+       include Enumeration
+
+       enum :disconnected, 0
+       enum :connected, 3
+       enum :auth_failed, 4
+       enum :expired, -112
    end
 
 
@@ -218,7 +228,18 @@ module ZooKeeper
     def initialize(binding)
       @binding = binding
     end
-  
+
+    def timeout
+      @binding.session.timeout
+    end
+
+    def watcher
+      @binding.session.watcher
+    end
+
+    def watcher=(watcher)
+      @binding.session.watcher=watcher
+    end
     # Retrieve the list of children at the given path
     # @overload children(path,watch=nil)
     #    @param [String] path 
@@ -281,7 +302,7 @@ module ZooKeeper
       
       req = Proto::GetDataRequest.new(:path => path, :watch => watch)
       
-      queue_request(req,:get,4,Proto::GetDataResponse) do | response |
+      queue_request(req,:get,4,Proto::GetDataResponse,:data,watch) do | response |
         blk.call( response.stat, response.data.to_s)
       end
     end
@@ -418,8 +439,7 @@ module ZooKeeper
     end
     
   end
-  
-end
+end  
 ZK=ZooKeeper
 
 # Synchronous methods will raise ZooKeeperErrors

@@ -4,7 +4,7 @@ describe ZooKeeper::Client do
 
     describe "A local connection" do
         before(:all) do
-            @zk = ZooKeeper.connect("localhost:2181")
+            @zk = ZooKeeper.connect("localhost:2181",:timeout => 0.2)
             unless @zk.exists("/zkruby")
                 @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE)
             end
@@ -16,7 +16,6 @@ describe ZooKeeper::Client do
 
         it "should return a stat for the root path" do
             stat = @zk.stat("/")
-            puts ("#{stat.class}")
             stat.should be_a ZooKeeper::Data::Stat
         end
 
@@ -26,7 +25,7 @@ describe ZooKeeper::Client do
             end
         end
 
-        it "should do a bunch of stuff" do
+        it "should perform all the ZooKeeper CRUD" do
             path = @zk.create("/zkruby/rspec","someData",ZK::ACL_OPEN_UNSAFE,:ephemeral)
             path.should == "/zkruby/rspec"
             stat,data = @zk.get("/zkruby/rspec")
@@ -39,6 +38,15 @@ describe ZooKeeper::Client do
             @zk.delete("/zkruby/rspec",stat.version)
             @zk.exists?("/zkruby/rspec").should be_false
         end
-    end
 
+        it "should raise ZooKeeperErrors in various circumstances"
+        it "should call the error call back for asynchronous errors"
+
+        describe "anti herd-effect features" do
+            it "should randomly shuffle the address list"
+
+            it "should randomly delay reconnections within one seventh of the timeout"
+        end    
+        
+    end
 end

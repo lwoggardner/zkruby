@@ -79,6 +79,7 @@ module ZooKeeper::RubyIO
             #TODO - will this really ever happen
             logger.warn("Incomplete write!")
           end
+          logger.debug { "Sending: " + data.unpack("H*")[0] }
         end
       rescue Exception => ex
         logger.warn("Exception in write loop",ex)
@@ -102,12 +103,17 @@ module ZooKeeper::RubyIO
             # two timeouts in a row mean we need to send a ping
             case ping
             when 1 ; @session.synchronize { @session.ping() }
-            when 2 ; break
+            when 2
+                logger.debug{"No response to ping in #{@session.ping_interval}*2"}
+                break
             end
           end
+        rescue EOFError
+          logger.debug { "EOF reading from socket" }
+          break
         rescue Exception => ex
-          logger.warn("Exception in readloop",ex) unless socket.eof?
-          break;
+          logger.warn( "#{ex.class} exception in readloop",ex )
+          break
         end
       end
       disconnect()
@@ -152,7 +158,7 @@ module ZooKeeper::RubyIO
             callback,*args = queued
             callback.call(*args)
           rescue Exception => ex
-            logger.debug( "Exception in event thread", ex )
+            logger.warn( "Exception in event thread", ex )
           end
         end
       end
@@ -167,9 +173,10 @@ module ZooKeeper::RubyIO
             conn =  session.synchronize { session.disconnected(); session.conn() }
           end
           #event of death
+          logger.debug("Pushing nil (event of death) to event queue")
           @event_queue.push(nil)
         rescue Exception => ex
-          logger.debug( "Exception in session thread", ex )
+          logger.error( "Exception in session thread", ex )
         end
       end
     end
@@ -224,8 +231,8 @@ module ZooKeeper::RubyIO
       # callback on the event thread
       @event_queue.push(args)
     end
-    
-  end
-end
+
+  end #Binding
+end #ZooKeeper
 # Add our binding
 ZooKeeper::BINDINGS << ZooKeeper::RubyIO::Binding

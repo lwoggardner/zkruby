@@ -9,9 +9,9 @@ module ZooKeeper
         include Slf4r::Logger
 
         attr_reader :ping_interval
-        attr_reader :conn
-        attr_reader :binding
         attr_reader :timeout
+        attr_reader :conn
+        attr_accessor :watcher
 
         def initialize(binding,addresses,options=nil)
             
@@ -32,10 +32,13 @@ module ZooKeeper
             @pending_queue = []
 
             # Create the watch list
+            # hash by watch type of hashes by path of set of watchers
             @watches = [ :children, :data, :exists ].inject({}) do |ws,wtype| 
                 ws[wtype] = Hash.new() { |h,k| h[k] = Set.new() }
                 ws
             end
+
+            @watcher = nil
 
         end
      
@@ -48,26 +51,11 @@ module ZooKeeper
         # @param conn that responds to #send_records(record...) and #disconnect()
         def prime_connection(conn)
             @conn = conn
-            
-            req = Proto::ConnectRequest.new( :timeout => timeout )
-            req.last_zxid_seen = @last_zxid_seen if @last_zxid_seen
-            req.session_id =  @session_id if @session_id
-            req.passwd = @session_passwd if @session_passwd
-
-            @conn.send_records(req)
-
-            #TODO Send auth data
-
-            #TODO Reset watches (SetWatches)
-            # Watches are dropped on disconnect, we reset them here
-            # dropping connections can be a good way of cleaning up on the server side
-            # If watch reset is disabled the watches will be notified of connection loss
-            # otherwise if set watches fails, all watches will be notified of connection loss
-            # This way a watch is only ever triggered exactly once
-            # we only keep data watches and child watches, even though server handles exists
-            # watches. We might need exists watches as they are handled on the server end
-            # although I can't quite understand the difference
+            send_session_connect()
+            send_auth_data()
+            reset_watches()
         end
+        
 
         # Connection API - called when data is available, reads and processes one packet/event
         # @param io <IO> 
@@ -86,8 +74,8 @@ module ZooKeeper
         def ping()
             if @keeper_state == :connected
                 logger.debug { "Ping send" }
-                hdr = Proto::RequestHeader.new(:xid => -2, :type => 11)
-                @conn.send_records(hdr)
+                hdr = Proto::RequestHeader.new(:xid => -2, :_type => 11)
+                conn.send_records(hdr)
             end
         end
 
@@ -106,7 +94,10 @@ module ZooKeeper
                 # if we are connected then everything in the pending queue has been sent so
                 # we must clear
                 # if not, then we'll keep them and hope the next reconnect works
-                clear_pending_queue(:connection_lost) if @keeper_state == :connected
+                if @keeper_state == :connected
+                    clear_pending_queue(:disconnected)
+                    invoke_watch(@watcher,KeeperState::DISCONNECTED,nil,WatchEvent::NONE) if @watcher
+                end
                 @keeper_state = :disconnected
                 reconnect()
            end
@@ -142,15 +133,18 @@ module ZooKeeper
 
             # we keep the requested block in a close packet
             @close_packet = ClosePacket.new(next_xid(),:close,-11,nil,nil,nil,nil,blk)
+            close_packet = @close_packet 
             @client_state = :closing
 
             # If there are other requests in flight, then we wait for them to finish
             # before sending the close packet since it immediately causes the socket
             # to close.
             queue_close_packet_if_necessary()
-            QueuedOp.new(@close_packet)
+            QueuedOp.new(close_packet)
         end
         private
+        attr_reader :watches
+        attr_reader :binding
 
         def parse_addresses(addresses)
             case addresses
@@ -180,6 +174,8 @@ module ZooKeeper
             @timeout = options.fetch(:timeout,DEFAULT_TIMEOUT)
             @max_connect_delay = options.fetch(:connect_delay,DEFAULT_CONNECT_DELAY)
             @connect_timeout = options.fetch(:connect_timeout,@timeout * 1.0 / 7.0)
+            @scheme = options.fetch(:scheme,nil)
+            @auth = options.fetch(:auth,nil)
         end
 
         def reconnect()
@@ -195,10 +191,10 @@ module ZooKeeper
         end
 
        
-        def session_expired()
-           clear_pending_queue(:session_expired)
+        def session_expired(reason=:expired)
+           clear_pending_queue(reason)
            
-           invoke_response(*@close_packet.error(:session_expired)) if @close_packet
+           invoke_response(*@close_packet.error(reason)) if @close_packet
 
            if @client_state == :closed
               logger.info { "Session closed id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
@@ -206,7 +202,8 @@ module ZooKeeper
               logger.warn { "Session expired id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
            end
 
-           @keeper_state = :expired
+           invoke_watch(@watcher,KeeperState::EXPIRED,nil,WatchEvent::NONE) if @watcher
+           @keeper_state = reason
            @client_state = :closed
         end
 
@@ -216,17 +213,57 @@ module ZooKeeper
                 #We're dead!
                 session_expired()
             else
-                timeout = result.time_out
+                @timeout = result.time_out.to_f / 1000.0
                 @keeper_state = :connected
-                @ping_interval = (result.time_out / 1000).to_f * 2.0 / 7.0
+
+                # Why 2 / 7 of the timeout?. If a binding sees no server response in this period it is required to
+                # generate a ping request
+                # if 2 periods go by without activity it is required to disconnect
+                # so we are alrea
+                @ping_interval = @timeout * 2.0 / 7.0
                 @session_id = result.session_id
                 @session_passwd = result.passwd
-                logger.info { "Connected session_id=#{@session_id}, timeout=#{result.time_out}, ping=#{@ping_interval}" }
+                logger.info { "Connected session_id=#{@session_id}, timeout=#{@time_out}, ping=#{@ping_interval}" }
 
                 logger.debug { "Sending #{@pending_queue.length} queued packets" }
                 @pending_queue.each { |p| send_packet(p) }
                 
                 queue_close_packet_if_necessary()
+                invoke_watch(@watcher,KeeperState::CONNECTED,nil,WatchEvent::NONE) if @watcher
+            end
+        end
+
+        def send_session_connect() 
+            req = Proto::ConnectRequest.new( :timeout => timeout )
+            req.last_zxid_seen = @last_zxid_seen if @last_zxid_seen
+            req.session_id =  @session_id if @session_id
+            req.passwd = @session_passwd if @session_passwd
+
+            conn.send_records(req)
+        end
+
+        def send_auth_data()
+            if @scheme
+                req = Proto::AuthPacket.new(:scheme => @scheme, :auth => @auth)
+                packet = Packet.new(-4,:auth,100,req,nil,nil,nil,nil)
+                send_packet(packet)
+            end
+        end
+        # Watches are dropped on disconnect, we reset them here
+        # dropping connections can be a good way of cleaning up on the server side
+        # If watch reset is disabled the watches will be notified of connection loss
+        # otherwise they will be seemlessly re-added
+        # This way a watch is only ever triggered exactly once
+        def reset_watches()
+            unless watches[:children].empty? && watches[:data].empty? && watches[:exists].empty?
+               req = Proto::SetWatches.new()
+               req.relative_zxid = @last_zxid_seen
+               req.data_watches = watches[:data].keys
+               req.child_watches = watches[:children].keys
+               req.exist_watches = watches[:exists].keys
+
+               packet = Packet.new(-8,:set_watches,101,req,nil,nil,nil,nil)
+               send_packet(packet)
             end
         end
         
@@ -238,16 +275,22 @@ module ZooKeeper
               when -2
                 logger.debug { "Ping reply" }
               when -4
-                #TODO Auth reply (which may fail)
+                logger.debug { "Auth reply" }
+                session_expired(:auth_failed) unless header.err.to_i == 0
               when -1
                 #Watch notification
                 event = Proto::WatcherEvent.read(packet_io)
-                process_watch_notification(event.state.to_i,event._type.to_i,event.path)
+                logger.debug { "Watch notification #{event.inspect} " }
+                process_watch_notification(event.state.to_i,event.path,event._type.to_i)
+              when -8
+                #Reset watch reply
+                logger.debug { "SetWatch reply"}
+                #TODO If error, send :disconnected to all watches
               else
                 # A normal packet reply. They should come in the order we sent them
                 # so we just match it to the packet at the front of the queue
                 packet = @pending_queue.shift
-                logger.debug { "Reply packet: #{packet.inspect}" }
+                logger.debug { "Packet reply: #{packet.inspect}" }
 
                 if (packet.xid.to_i != header.xid.to_i)
 
@@ -256,44 +299,56 @@ module ZooKeeper
                    # Treat this like a dropped connection, and then force the connection
                    # to be dropped. But wait for the connection to notify us before
                    # we actually update our keeper_state
-                   packet.error(:connection_lost)
+                   packet.error(:disconnected)
                    @conn.disconnect() 
                 else
-                    @last_zxid_seen = header.zxid
                     
+                    @last_zxid_seen = header.zxid
                     callback, response, watch_type  = packet.result(header.err.to_i)
                     logger.debug { "Reply response: #{response.inspect}" } 
                     invoke_response(callback,response,packet_io)
 
-                    @watches[watch_type][packet.path] << packet.watcher if (watch_type)
+                    if (packet.watch_type) 
+                        @watches[packet.watch_type][packet.path] << packet.watcher 
+                        logger.debug { "Registered #{packet.watcher} for type=#{packet.watch_type} at #{packet.path}" }
+                    end
                     queue_close_packet_if_necessary()
                 end
               end
         end
         
 
-        def process_watch_notification(state,event,path)
+        def process_watch_notification(state,path,event)
+            
+            watch_event = WatchEvent.fetch(event)
+            watch_types = watch_event.watch_types()
 
-            watch_types = WatchEvent.get(event).watch_types()
+            watches = watch_types.inject(Set.new()) do | result, watch_type |
+               more_watches = @watches[watch_type].delete(path) 
+               result.merge(more_watches) if more_watches
+               result
+            end
+            
+            if watches.empty?
+                logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
+            end
 
-             watches = watch_types.inject(Set.new()) do | result, watch_type |
-                result.merge(@watches[watch_type].delete(path))
-             end
-
-             watches.each do | watch |
-                #TODO invoke with binding.invoke
-                # and handle exceptions
-                if watch.respond_to?(:process_watch)
-                   watch.process_watch(state,event,path)
-                elsif watch.respond_to?(:call)
-                   watch.call(state,event,path)
-                else
-                   raise ProtocolError("Bad watcher #{watch}")
-                end
-             end
+            watches.each { | watch | invoke_watch(watch,state,path,event) }      
              
         end
 
+        def invoke_watch(watch,state,path,event)
+                logger.debug { "Watch #{watch} triggered with #{state}, #{path}. #{event}" }
+                if watch.respond_to?(:process_watch)
+                   callback = Proc.new() { |state,path,event| watch.process_watch(state,path,event) } 
+                elsif watch.respond_to?(:call)
+                   callback = watch
+                else
+                   raise ProtocolError("Bad watcher #{watch}")
+                end
+
+                binding.invoke(callback,state,path,event)
+        end
 
         def clear_pending_queue(reason)
            @pending_queue.each  { |p| invoke_response(*p.error(reason)) }
@@ -323,9 +378,9 @@ module ZooKeeper
         end
 
         def resolve_watcher(watch_type,watcher)
-            if watcher == true
+            if watcher == true && @watcher
                 #the actual TrueClass refers to the default watcher
-                watcher = @default_watcher
+                watcher = @watcher
             elsif watcher.respond_to?(:call) || watcher.respond_to?(:process_watch)
                 # ok a proc or quacks like a watcher
             elsif watcher
