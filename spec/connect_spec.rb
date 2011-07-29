@@ -4,7 +4,7 @@ describe ZooKeeper::Client do
 
         before(:all) do
             restart_cluster(2)
-            @zk = ZooKeeper.connect("localhost:2181",:timeout => 10)
+            @zk = connect()
             unless @zk.exists("/zkruby")
                 @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE)
             end

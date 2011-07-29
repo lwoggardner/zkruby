@@ -20,14 +20,16 @@ describe ZooKeeper::Client do
         end
 
         it "should asynchronously return a stat for the root path" do
-            @zk.stat("/") do |stat|
+            op = @zk.stat("/") do |stat|
                 stat.should be_a ZooKeeper::Data::Stat
             end
+            op.errback { |err| err.should be_nil }
         end
 
         it "should perform all the ZooKeeper CRUD" do
             path = @zk.create("/zkruby/rspec","someData",ZK::ACL_OPEN_UNSAFE,:ephemeral)
             path.should == "/zkruby/rspec"
+            @zk.exists?("/zkruby/rspec").should be_true
             stat,data = @zk.get("/zkruby/rspec")
             stat.should be_a ZooKeeper::Data::Stat
             data.should == "someData"

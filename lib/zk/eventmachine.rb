@@ -68,6 +68,7 @@ module ZooKeeper
      # The EventMachine binding is very simple because there is only one thread!
      # and we have good stuff like timers provided for us
      class Binding
+        include Slf4r::Logger        
         # We can use this binding if we are running in the reactor thread
         def self.available?()
             EM.reactor_running? && EM.reactor_thread?
@@ -98,11 +99,11 @@ module ZooKeeper
             f = Fiber.current
             
             op = client.send(method,*args) do |*results|
-                f.resume(*results)
+                f.resume(results)
             end
 
             op.errback do |err|
-                    f.resume(ZooKeeperError.new(err))
+                 f.resume(ZooKeeperError.new(err))
             end
 
             result = Fiber.yield

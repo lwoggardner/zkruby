@@ -31,6 +31,10 @@ module Enumeration
   def to_sym
     @name
   end
+
+  def to_s
+    "#{super}(#{@name})"
+  end
  
   def self.included(base)
     base.extend(ClassMethods)    
