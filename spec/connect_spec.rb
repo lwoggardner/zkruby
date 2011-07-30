@@ -11,7 +11,7 @@ describe ZooKeeper::Client do
         end
 
         after(:all) do
-            @zk.close()
+            safe_close(@zk)
         end
 
         it "should stay connected" do

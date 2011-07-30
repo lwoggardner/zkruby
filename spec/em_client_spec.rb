@@ -6,10 +6,16 @@ require 'fiber'
 module EMHelper
     def em_restart_cluster(delay=0)
         f = Fiber.current
-        op = Proc.new { restart_cluster(delay) } 
-        cb = Proc.new { |result| f.resume("done") }
-        defer = EM.defer(op,cb) 
-        #defer.errback() { f.resume("fail") }
+        op = Proc.new do
+          begin
+            restart_cluster(delay)
+          rescue Exception => ex
+            puts ("Exception restarting cluster #{ex}")
+          end
+          true
+        end
+        cb = Proc.new { |result| puts "cluster restart done #{result}"; f.resume("done") }
+        defer = EM.defer(op,cb)
         Fiber.yield.should == "done"
     end
 end
@@ -66,6 +72,8 @@ describe ZooKeeper::Client do
         it "should perform all the ZooKeeper CRUD" do
             path = @zk.create("/zkruby/rspec","someData",ZK::ACL_OPEN_UNSAFE,:ephemeral)
             path.should == "/zkruby/rspec"
+            stat = @zk.stat("/zkruby/anonexistentpath")
+            stat.should be_nil
             stat,data = @zk.get("/zkruby/rspec")
             stat.should be_a ZooKeeper::Data::Stat
             data.should == "someData"
@@ -96,7 +104,9 @@ describe ZooKeeper::Client do
             watcher.should_not_receive(:process_watch).with(ZK::KeeperState::EXPIRED,nil,ZK::WatchEvent::NONE)
             @zk.watcher = watcher
             em_restart_cluster()
+            puts "Cluster restarted"
             @zk.exists("/zkruby").should be_true
+            puts "reonnect done"
         end
         
         it "should eventually expire the session" do

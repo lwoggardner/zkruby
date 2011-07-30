@@ -39,7 +39,12 @@ module ZooKeeper::RubyIO
       # See http://jira.codehaus.org/browse/JRUBY-5165 
       # In any case this should be encapsulated in TCPSocket.open(host,port,timeout)
       if RUBY_PLATFORM == "java"
-        sock = TCPSocket.new(host,port.to_i)
+        begin
+            sock = TCPSocket.new(host,port.to_i)
+        rescue Errno::ECONNREFUSED
+            logger.warn("TCP Connection refused to #{host}:#{port}")
+            sock = nil
+        end
       else
         addr = Socket.getaddrinfo(host, nil)
         sock = Socket.new(Socket.const_get(addr[0][0]), Socket::SOCK_STREAM, 0)

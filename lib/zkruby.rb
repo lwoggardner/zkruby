@@ -197,12 +197,12 @@ module ZooKeeper
    end
 
 
-  # @abstract
+  # @abstract.
   class Watcher
       # @param [Symbol] state representing the session state
       #    (:connected, :disconnected, :auth_failed, :session_expired)
       # @param [String] path the effected path
-      # @param [WatchEvent] event 
+      # @param [WatchEvent] evenstt 
       def process_watch(state,path,event)
       end
   end
@@ -218,9 +218,12 @@ module ZooKeeper
   # block is passed the results. Errors will be sent to an error callback if registered on the {QueuedOp}
   #
   # Requests that take a watch argument can be passed either...
-  # * An object that quacks like a {Watcher} 
-  # * A Proc will be invoked with arguments state, path, event
-  # * The literal value "true" refers to the default watcher registered with the session
+  #   * An object that quacks like a {Watcher} 
+  #   * A Proc will be invoked with arguments state, path, event
+  #   * The literal value "true" refers to the default watcher registered with the session
+  #
+  # Registered watches will be fired exactly once for a given path with either the expected event
+  # or with state :expired and event :none when the session is finalised 
   class Client
    
     # Don't call this directly
@@ -229,14 +232,20 @@ module ZooKeeper
       @binding = binding
     end
 
+    # Session timeout, initially as supplied, but once connected is the negotiated
+    # timeout with the server. 
     def timeout
       @binding.session.timeout
     end
 
-    def watcher
+    # The currently registered default watcher
+    def watcher 
       @binding.session.watcher
     end
 
+    # Assign the watcher to the session. This watcher will receive session connect/disconnect/expired
+    # events as well as any path based watches registered to the API calls using the literal value "true"
+    # @param [Watcher|Proc] watcher
     def watcher=(watcher)
       @binding.session.watcher=watcher
     end
@@ -455,7 +464,9 @@ module ZooKeeper
         @binding.session.unchroot(path)
     end
   end
-end  
+end
+
+# Shorthand
 ZK=ZooKeeper
 
 # Synchronous methods will raise ZooKeeperErrors
@@ -470,5 +481,6 @@ class ZooKeeperError < StandardError
   def initialize(err)
     @err, @err_name = ZooKeeper::Errors.lookup(err)
   end
+
 end
 

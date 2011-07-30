@@ -1,13 +1,21 @@
 
 require 'eventmachine'
-#TODO Looks like this is needed for MRI but fails on JRuby
-#require 'fiber' 
+require 'fiber' 
+
+
 module ZooKeeper
    module EventMachine
     
      class ClientConn < ::EM::Connection
         include Protocol
         include Slf4r::Logger        
+        
+        unless EventMachine.methods.include?(:set_pending_connect_timeout)
+           def set_pending_connect_timeout(timeout)
+
+           end
+        end  
+
         def initialize(session,connect_timeout)
             @session = session
             @connect_timeout = connect_timeout

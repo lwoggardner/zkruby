@@ -49,6 +49,10 @@ module Enumeration
         ref.kind_of?(Enumeration) ? ref : @enums.fetch(ref)
     end
 
+    def lookup(ref)
+        fetch
+    end
+
     def enum(name,index,*args)
         @enums ||= {}
         #TODO: This causes problems for JRuby
