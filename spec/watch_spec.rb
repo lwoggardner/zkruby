@@ -23,10 +23,22 @@ describe "watches" do
         sleep(5)
         watch_results.size().should == 1
         watch_results[0][1].should == path
+        watch_results[0][2].should === :node_data_changed
     end
 
     it "should handle exists watches"
-    it "should handle child watches"
+    it "should handle child watches" do
+        watch_results = []
+        watch = lambda { |state,path,event| watch_results << [ state,path,event ] }
+
+        stat,children = @zk.children("/zkruby",watch)
+        path = @zk.create("/zkruby/rspec_watch","somedata",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
+        sleep(5)
+        watch_results.size().should == 1
+        watch_results[0][1].should == "/zkruby"
+        watch_results[0][2].should === :node_children_changed
+
+    end
 
     it "should reset watches over socket disconnects"
     it "should not send :connection_lost to watches on disconnect if so configured"

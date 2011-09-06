@@ -262,7 +262,7 @@ module ZooKeeper
         end
         # Watches are dropped on disconnect, we reset them here
         # dropping connections can be a good way of cleaning up on the server side
-        # If watch reset is disabled the watches will be notified of connection loss
+        # #TODO If watch reset is disabled the watches will be notified of connection loss
         # otherwise they will be seemlessly re-added
         # This way a watch is only ever triggered exactly once
         def reset_watches()
@@ -335,7 +335,7 @@ module ZooKeeper
             watch_types = watch_event.watch_types()
 
             watches = watch_types.inject(Set.new()) do | result, watch_type |
-               more_watches = @watches[watch_type].delete(path) 
+               more_watches = @watches[watch_type].delete(path)
                result.merge(more_watches) if more_watches
                result
             end
@@ -343,7 +343,7 @@ module ZooKeeper
             if watches.empty?
                 logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
             end
-            watches.each { | watch | invoke_watch(watch,state,path,event) }      
+            watches.each { | watch | invoke_watch(watch,state,path,watch_event) }      
              
         end
 
