@@ -1,5 +1,4 @@
 module Enumeration
-  
 
   def == (other)
      case other

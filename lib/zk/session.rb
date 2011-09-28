@@ -230,7 +230,8 @@ module ZooKeeper
                 # Why 2 / 7 of the timeout?. If a binding sees no server response in this period it is required to
                 # generate a ping request
                 # if 2 periods go by without activity it is required to disconnect
-                # so we are alrea
+                # so we are already more than half way through the session timeout
+                # and we need to give ourselves time to reconnect to another server
                 @ping_interval = @timeout * 2.0 / 7.0
                 @session_id = result.session_id
                 @session_passwd = result.passwd
@@ -334,6 +335,8 @@ module ZooKeeper
             watch_event = WatchEvent.fetch(event)
             watch_types = watch_event.watch_types()
 
+            keeper_state = KeeperState.fetch(state)
+
             watches = watch_types.inject(Set.new()) do | result, watch_type |
                more_watches = @watches[watch_type].delete(path)
                result.merge(more_watches) if more_watches
@@ -343,7 +346,7 @@ module ZooKeeper
             if watches.empty?
                 logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
             end
-            watches.each { | watch | invoke_watch(watch,state,path,watch_event) }      
+            watches.each { | watch | invoke_watch(watch,keeper_state,path,watch_event) }      
              
         end
 

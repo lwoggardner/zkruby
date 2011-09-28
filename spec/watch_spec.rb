@@ -32,7 +32,7 @@ describe "watches" do
         watch = lambda { |state,path,event| watch_results << [ state,path,event ] }
 
         stat,children = @zk.children("/zkruby",watch)
-        path = @zk.create("/zkruby/rspec_watch","somedata",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
+        path = @zk2.create("/zkruby/rspec_watch","somedata",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
         sleep(5)
         watch_results.size().should == 1
         watch_results[0][1].should == "/zkruby"

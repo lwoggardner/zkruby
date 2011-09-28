@@ -199,7 +199,7 @@ module ZooKeeper
 
     # @abstract.
     class Watcher
-        # @param [Symbol] state representing the session state
+        # @param [KeeperState] state representing the session state
         #    (:connected, :disconnected, :auth_failed, :session_expired)
         # @param [String] path the effected path
         # @param [WatchEvent] event the event that triggered the watch 
@@ -481,6 +481,5 @@ class ZooKeeperError < StandardError
     def initialize(err)
         @err, @err_name = ZooKeeper::Errors.lookup(err)
     end
-
 end
 
