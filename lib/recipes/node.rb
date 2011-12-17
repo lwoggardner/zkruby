@@ -78,7 +78,7 @@ module ZooKeeper
 
                 op2.errback do |err|
                     case err
-                    when Errors::CONNECTION_LOST
+                    when ZK::Error::CONNECTION_LOST
                         #try again
                         run()
                     else
@@ -91,7 +91,7 @@ module ZooKeeper
 
             op.errback do |err|
                 case err
-                when Errors::CONNECTION_LOST
+                when ZK::Error::CONNECTION_LOST
                     run()             
                 else
                     unexpected_error(@path,err)
@@ -125,9 +125,9 @@ module ZooKeeper
 
             op.errback do |err|
                 case err
-                when Errors::NO_NODE
+                when ZK::Error::NO_NODE
                     receive_data(path,nil,nil)
-                when Errors::CONNECTION_LOST
+                when ZK::Error::CONNECTION_LOST
                     if @running
                         @child_errors << path
                     else

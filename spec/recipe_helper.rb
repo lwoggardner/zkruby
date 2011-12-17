@@ -19,7 +19,7 @@ module ZooKeeper
     end
 
     # This harness wraps a double on which the calls to a zk client can be stubbed
-    # with return values or exceptions (ZooKeeperError)
+    # with return values or exceptions (ZooKeeper::Error)
     # If the recipe under test makes an asynchronous call to the mock client, then
     # the callback block is captured alongside the stub result and put in a queue
     # for later processing via #run_queue
@@ -41,11 +41,11 @@ module ZooKeeper
                 cb = ZooKeeper::MockCallback.new(callback)
                 begin
                     cb.results = @double.send(meth,*args)
-                rescue ZooKeeperError => ex
-                    cb.err = ex.err
+                rescue ZooKeeper::Error => ex
+                    cb.err = ex.to_sym
                 end
                 @queue << cb
-                ZooKeeper::QueuedOp.new(cb)
+                ZooKeeper::AsyncOp.new(cb)
             else
                 # we won't get the return from a synchronous call until
                 # any pending asynchronous calls have completed

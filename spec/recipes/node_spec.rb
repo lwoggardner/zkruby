@@ -85,7 +85,7 @@ describe ZooKeeper::NodeWatcher do
             count = 0
             @zkd.stub(:children).with(@path,@watcher) {
                 count = count + 1 
-                raise ZooKeeperError.new(:connection_lost) if count == 1
+                raise ZooKeeper::Error.lookup(:connection_lost) if count == 1
                 [@mockstat,["a","b","c"]]
             }
             @zkd.stub(:get).and_return([@mockstat,"dataA"],[@mockstat,"dataB"],[@mockstat,"dataC"])
@@ -100,7 +100,7 @@ describe ZooKeeper::NodeWatcher do
                      "#{@path}/c" => "dataC"}
             @zkd.stub(:get) { |path|
                 count += 1
-                raise ZooKeeperError.new(:connection_lost) if count == 2
+                raise ZooKeeper::Error.lookup(:connection_lost) if count == 2
                 [@mockstat,data[path]]
             }
             @zkd.stub(:get).with(@path).and_return([@mockstat,"root"]) 
@@ -112,7 +112,7 @@ describe ZooKeeper::NodeWatcher do
             count = 0
             @zkd.stub(:get).with(@path) {
                 count += 1
-                raise ZooKeeperError.new(:connection_lost) if count == 1
+                raise ZooKeeper::Error.lookup(:connection_lost) if count == 1
                 [@mockstat,"root"] 
             }
         end
