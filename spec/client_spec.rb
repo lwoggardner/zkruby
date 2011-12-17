@@ -41,6 +41,12 @@ describe ZooKeeper::Client do
             @zk.exists?("/zkruby/rspec").should be_false
         end
 
+        it "should accept -1 to delete any version" do
+            path = @zk.create("/zkruby/rspec","someData",ZK::ACL_OPEN_UNSAFE,:ephemeral)
+            @zk.delete("/zkruby/rspec",-1)
+            @zk.exists?("/zkruby/rspec").should be_false
+        end
+
         it "should raise ZooKeeperErrors in various circumstances"
         it "should call the error call back for asynchronous errors"
 

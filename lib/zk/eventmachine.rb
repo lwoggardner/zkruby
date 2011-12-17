@@ -111,13 +111,13 @@ module ZooKeeper
             end
 
             op.errback do |err|
-                 f.resume(ZooKeeperError.new(err))
+                 f.resume(ZK::Error.lookup(err))
             end
 
             result = Fiber.yield
-            if result.kind_of?(ZooKeeperError)
-                message = "rc=#{result.err}(:#{result.err_name}) for ##{method}(#{args.join(',')})"  
-                raise result, message, caller[0..-1]
+            if result.kind_of?(ZK::Error)
+                message = "rc=#{result}) for ##{method}(#{args.join(',')})"  
+                raise result, message #, caller[0..-1]
             end
             return result
         end

@@ -36,7 +36,7 @@ describe ZooKeeper::Client do
             watcher.should_receive(:process_watch).with(ZK::KeeperState::EXPIRED,nil,ZK::WatchEvent::NONE)
             @zk.watcher = watcher
             restart_cluster(@zk.timeout * 2.0)
-            lambda { @zk.exists?("/zkruby") }.should raise_error(ZooKeeperError)
+            lambda { @zk.exists?("/zkruby") }.should raise_error(ZooKeeper::Error)
         end
 
 end

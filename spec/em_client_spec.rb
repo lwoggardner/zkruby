@@ -10,16 +10,17 @@ module EMHelper
           begin
             restart_cluster(delay)
           rescue Exception => ex
-            puts ("Exception restarting cluster #{ex}")
+            logger.error ("Exception restarting cluster #{ex}")
           end
           true
         end
-        cb = Proc.new { |result| puts "cluster restart done #{result}"; f.resume("done") }
+        cb = Proc.new { |result| f.resume("done") }
         defer = EM.defer(op,cb)
         Fiber.yield.should == "done"
     end
 end
 
+include Slf4r::Logger
 include EMHelper
 describe ZooKeeper::Client do
     describe "A event machine connection" do
@@ -27,7 +28,6 @@ describe ZooKeeper::Client do
         around(:each) do |example|
          ::EventMachine.run {
              f = Fiber.new() do
-                puts (f)
                 example.run
              end                                              
              f.resume
@@ -37,7 +37,6 @@ describe ZooKeeper::Client do
         before(:each) do
             @zk = connect(:timeout => 2.0, :binding => ZooKeeper::EventMachine::Binding )
             result =  @zk.exists("/zkruby")
-            puts("Exists in before #{result.inspect}")
             unless result
                 @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE)
             end
@@ -46,8 +45,8 @@ describe ZooKeeper::Client do
         after(:each) do
             begin 
                 @zk.close()
-            rescue ZooKeeperError => ex
-                puts("Error closing zk #{ex}")
+            rescue ZooKeeper::Error => ex
+                logger.error("Error closing zk #{ex}")
             ensure
                 EM::stop_event_loop()
             end
@@ -64,8 +63,8 @@ describe ZooKeeper::Client do
                 stat.should be_a ZooKeeper::Data::Stat
                 f.resume("done")
             end
-            #op.errback { |err| f.resume(err) }
-            puts (f) 
+            op.errback { |err| f.resume(err) }
+            
             Fiber.yield.should == "done"
         end
 
@@ -98,15 +97,13 @@ describe ZooKeeper::Client do
 
 
         it "should seamlessly reconnect within the timeout period" do
+          
             watcher = mock("Watcher").as_null_object
             watcher.should_receive(:process_watch).with(ZK::KeeperState::DISCONNECTED,nil,ZK::WatchEvent::NONE)
             watcher.should_receive(:process_watch).with(ZK::KeeperState::CONNECTED,nil,ZK::WatchEvent::NONE)
-            watcher.should_not_receive(:process_watch).with(ZK::KeeperState::EXPIRED,nil,ZK::WatchEvent::NONE)
             @zk.watcher = watcher
             em_restart_cluster()
-            puts "Cluster restarted"
             @zk.exists("/zkruby").should be_true
-            puts "reonnect done"
         end
         
         it "should eventually expire the session" do
@@ -115,7 +112,7 @@ describe ZooKeeper::Client do
             watcher.should_receive(:process_watch).with(ZK::KeeperState::EXPIRED,nil,ZK::WatchEvent::NONE)
             @zk.watcher = watcher
             em_restart_cluster(@zk.timeout * 2.0)
-            lambda { puts "exists in lambda"; @zk.exists?("/zkruby") }.should raise_error(ZooKeeperError)
+            lambda { @zk.exists?("/zkruby") }.should raise_error(ZooKeeper::Error)
         end
 
 

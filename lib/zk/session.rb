@@ -6,6 +6,8 @@ module ZooKeeper
 
         DEFAULT_TIMEOUT = 4
         DEFAULT_CONNECT_DELAY = 0.2
+        DEFAULT_PORT = 2181
+
         include Slf4r::Logger
 
         attr_reader :ping_interval
@@ -123,7 +125,7 @@ module ZooKeeper
         end
        
         def queue_request(request,op,opcode,response=nil,watch_type=nil,watcher=nil,ptype=Packet,&callback)
-            raise ZooKeeperError.new(:session_expired) unless @client_state == :ready
+            raise Error.SESSION_EXPIRED unless @client_state == :ready
 
             watch_type, watcher = resolve_watcher(watch_type,watcher)
 
@@ -133,13 +135,13 @@ module ZooKeeper
             
             queue_packet(packet)
             
-            QueuedOp.new(packet)
+            AsyncOp.new(packet)
         end
 
         def close(&blk)
             #TODO possibly this should not be an exception
             #TODO although if not an exception, perhaps should yield the block
-            raise ZooKeeperError.new(:session_expired) unless @client_state == :ready
+            raise Error.SESSION_EXPIRED unless @client_state == :ready
 
             # we keep the requested block in a close packet
             @close_packet = ClosePacket.new(next_xid(),:close,-11,nil,nil,nil,nil,blk)
@@ -150,7 +152,7 @@ module ZooKeeper
             # before sending the close packet since it immediately causes the socket
             # to close.
             queue_close_packet_if_necessary()
-            QueuedOp.new(close_packet)
+            AsyncOp.new(close_packet)
         end
         private
         attr_reader :watches

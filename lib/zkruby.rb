@@ -17,11 +17,18 @@ module ZooKeeper
 
     BINDINGS = []
 
-    # Provides a mapping between zk error codes and a human friendly name (symbol)
-    # Can also be referenced as a constant
-    # @todo Consider refactor these to also be Exceptions extending ZooKeeperError eg
-    #     rescue ZooKeeper::BadVersionError
-    class Errors
+
+    # Synchronous methods will raise an instance of ZooKeeper::Error
+    # that can be caught in the standard way
+    # @example
+    #   begin
+    #       zk.create(...)
+    #   rescue ZK::Error::NODE_EXISTS
+    #       ....
+    #   rescue ZK::Error::CONNECTION_LOST
+    #   end
+    #
+    class Error < StandardError
         include Enumeration
         enum :none, 0
         enum :system_error,  (-1) 
@@ -44,15 +51,7 @@ module ZooKeeper
         enum :invalid_acl, (-114)
         enum :auth_failed, (-115)
         enum :session_moved, (-118)
-
-        # 
-        # @param err either an integer or a symbol representing a zk error
-        # @return [Fixnum,Symbol] code, name
-        def self.lookup(err)
-            error = self.get(err)
-            return error.to_int, error.to_sym if error
-            return -999, :unknown
-        end
+        enum :unknown, (-999)
     end
 
     # Permission constants
@@ -92,7 +91,7 @@ module ZooKeeper
     def self.acl(id,*perms)
         Data::ACL.new( :identity => id, :perms => self.perms(*perms) )
     end
-
+    
     #  
     # The Anyone ID
     ANYONE_ID_UNSAFE = Data::Identity.new(:scheme => "world", :identity => "anyone")
@@ -115,18 +114,19 @@ module ZooKeeper
     ACL_READ_UNSAFE = READ_ACL_UNSAFE
 
     # Returned by asynchronous calls
-    #    
+    # 
+    # @example
     #    op = zk.stat("\apath") { ... }
     #    op.on_error do |err|
     #      case err
-    #      when Errors::SESSION_EXPIRED 
+    #      when ZK::Error::SESSION_EXPIRED 
     #           puts "Session expired"
     #      else
     #           puts "Some other error"
     #      end
     #    end
     #
-    class QueuedOp
+    class AsyncOp
         def initialize(packet)
             @packet = packet
         end
@@ -180,7 +180,7 @@ module ZooKeeper
         end
 
         include Enumeration
-        enum :none,-1,[]
+        enum :none,(-1),[]
         enum :node_created, 1, [ :data, :exists ]
         enum :node_deleted, 2, [ :data, :children ]
         enum :node_data_changed, 3, [ :data, :exists ]
@@ -212,10 +212,10 @@ module ZooKeeper
     # All calls operate asynchronously or synchronously based on whether a block is supplied
     #
     # Without a block, requests are executed synchronously and either return results directly or raise
-    # a {ZooKeeperError}
+    # a {Error}
     #
-    # With a block, the request returns immediately with a {QueuedOp}. When the server responds the
-    # block is passed the results. Errors will be sent to an error callback if registered on the {QueuedOp}
+    # With a block, the request returns immediately with a {AsyncOp}. When the server responds the
+    # block is passed the results. Errors will be sent to an error callback if registered on the {AsyncOp}
     #
     # Requests that take a watch argument can be passed either...
     #   * An object that quacks like a {Watcher} 
@@ -255,9 +255,9 @@ module ZooKeeper
         #    @param [String] path 
         #    @param [Watcher] if supplied sets a child watch on the given path
         #    @return [Data::Stat,Array<String>] stat,children stat of path and the list of child nodes
-        #    @raise [ZooKeeperError] 
+        #    @raise [Error] 
         # @overload children(path,watch=nil)
-        #    @return [QueuedOp] asynchronous operation
+        #    @return [AsyncOp] asynchronous operation
         #    @yieldparam [Data::Stat]  stat current stat of path
         #    @yieldparam [Array<String>] children the list of child nodes at path 
         def children(path,watch=nil,&callback)
@@ -279,9 +279,9 @@ module ZooKeeper
         #   @param [Data::ACL] acl the access control list to apply to the new node
         #   @param [Symbol,...] modeopts combination of :sequential, :emphemeral
         #   @return [String] the created path, only different if :sequential is requested 
-        #   @raise [ZooKeeperError]     
+        #   @raise [Error]     
         # @overload create(path,data,acl,*modeopts)
-        #   @return [QueuedOp] asynchronous operation
+        #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [String] path the created path
         def create(path,data,acl,*modeopts,&blk)
             return synchronous_call(:create,path,data,acl,*modeopts)[0] unless block_given?
@@ -304,9 +304,9 @@ module ZooKeeper
         #   @param [String] path
         #   @param [Watcher] watch optional data watch to set on this path
         #   @return [Data::Stat,String] stat,data at path 
-        #   @raise [ZooKeeperError]
+        #   @raise [Error]
         # @overload get(path,watch=nil)
-        #   @return [QueuedOp] asynchronous operation
+        #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [Data::Stat] stat Stat of the path
         #   @yieldparam [String] data Content at path
         def get(path,watch=nil,&blk)
@@ -325,9 +325,9 @@ module ZooKeeper
         #   @param [String] path
         #   @param [Watcher] wath optional exists watch to set on this path
         #   @return [Data::Stat] Stat of the path or nil if the path does not exist
-        #   @raise [ZooKeeperError]
+        #   @raise [Error]
         # @overload exists(path,watch=nil)
-        #   @return [QueuedOp] asynchronous operation
+        #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [Data:Stat] stat Stat of the path or nil if the path did not exist
         def exists(path,watch=nil,&blk)
             return synchronous_call(:exists,path,watch)[0] unless block_given?
@@ -346,9 +346,9 @@ module ZooKeeper
         #    @param [String] path
         #    @param [FixNum] version the expected version to be deleted (-1 to match any version)
         #    @return 
-        #    @raise [ZooKeeperError]
+        #    @raise [Error]
         # @overload delete(path,version)
-        #    @return [QueuedOp]
+        #    @return [AsyncOp]
         #    @yield  [] callback invoked if delete is successful
         def delete(path,version,&blk)
             return synchronous_call(:delete,path,version) unless block_given?
@@ -366,9 +366,9 @@ module ZooKeeper
         #    @param [String] data content to set at path
         #    @param [Fixnum] version expected current version at path
         #    @return [Data::Stat] new stat of path (ie new version)
-        #    @raise [ZooKeeperError]
+        #    @raise [Error]
         # @overload set(path,data,version)
-        #    @return [QueuedOp] asynchronous operation
+        #    @return [AsyncOp] asynchronous operation
         #    @yieldparam [Data::Stat] stat new stat of path
         def set(path,data,version,&blk)
             return synchronous_call(:set,path,data,version)[0] unless block_given?
@@ -384,9 +384,9 @@ module ZooKeeper
         # @overload get_acl(path)
         #    @param [String] path
         #    @return [Array<Data::ACL>] list of acls applying to path
-        #    @raise [ZooKeeperError]
+        #    @raise [Error]
         # @overload get_acl(path)
-        #   @return [QueuedOp] asynchronous operation
+        #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [Array<Data::ACL>] list of acls applying to path
         def get_acl(path,&blk)
             return synchronous_call(:get_acl,path)[0] unless block_given?
@@ -404,9 +404,9 @@ module ZooKeeper
         #    @param [Array<Data::ACL>] acl list of acls for path
         #    @param [Fixnum] version expected current version
         #    @return Data::Stat new stat for path if successful
-        #    @raise [ZooKeeperError]
+        #    @raise [Error]
         # @overload set_acl(path,acl,version)
-        #    @return [QueuedOp] asynchronous operation
+        #    @return [AsyncOp] asynchronous operation
         #    @yieldparam [Data::Stat] new stat for path if successful
         def set_acl(path,acl,version,&blk)
             return synchronous_call(:set_acl,acl,version)[0] unless block_given?
@@ -423,9 +423,9 @@ module ZooKeeper
         # @overload sync(path)
         #   @param [String] path
         #   @return [String] path
-        #   @raise [ZooKeeperError]
+        #   @raise [Error]
         # @overload sync(path)
-        #   @return [QueuedOp] asynchronous operation
+        #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [String] path 
         def sync(path,&blk)
             return synchronous_call(:sync,path)[0] unless block_given?
@@ -438,9 +438,9 @@ module ZooKeeper
 
         # Close the session
         # @overload close()
-        #    @raise [ZooKeeperError]
+        #    @raise [Error]
         # @overload close()
-        #    @return [QueuedOp] asynchronous operation
+        #    @return [AsyncOp] asynchronous operation
         #    @yield [] callback invoked when session is closed 
         def close(&blk)
             return synchronous_call(:close) unless block_given?
@@ -468,18 +468,3 @@ end
 
 # Shorthand
 ZK=ZooKeeper
-
-# Synchronous methods will raise ZooKeeperErrors
-# TODO - probably should just wrap an error constant
-class ZooKeeperError < StandardError
-    # @return [FixNum] the error code
-    attr_reader :err
-
-    # @return [Symbol] name for this error
-    attr_reader :err_name
-
-    def initialize(err)
-        @err, @err_name = ZooKeeper::Errors.lookup(err)
-    end
-end
-

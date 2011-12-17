@@ -208,7 +208,7 @@ module ZooKeeper::RubyIO
         
         op.errback do |err|
           mutex.synchronize do
-            op_result  = ZooKeeperError.new(err)
+            op_result  = ZK::Error.lookup(err)
             cv.signal()
           end
         end
@@ -216,8 +216,8 @@ module ZooKeeper::RubyIO
         cv.wait()
       end
       
-      if op_result.kind_of?(ZooKeeperError)
-        message = "rc=#{ op_result.err }(:#{ op_result.err_name }) for ##{ method }(#{ args.join(',') })"
+      if op_result.kind_of?(ZK::Error)
+        message = "rc=#{op_result} for ##{ method }(#{ args.join(',') })"
         raise op_result, message, caller[0..-1]
       end
       

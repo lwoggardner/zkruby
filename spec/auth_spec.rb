@@ -14,7 +14,7 @@ describe "ZooKeeper Authentication" do
         
     it "should not allow unauthenticated access" do
         zk2 = connect()
-        lambda { zk2.get(@path) }.should raise_error(ZooKeeperError)
+        lambda { zk2.get(@path) }.should raise_error(ZooKeeper::Error)
         zk2.close()
    end
 
@@ -27,7 +27,7 @@ describe "ZooKeeper Authentication" do
 
     it "should not allow access with bad password" do
         zk2 = connect(:scheme => "digest", :auth => "myuser:badpass")
-        lambda { zk2.get(@path) }.should raise_error(ZooKeeperError)
+        lambda { zk2.get(@path) }.should raise_error(ZooKeeper::Error)
         zk2.close()
     end
 

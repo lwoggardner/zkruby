@@ -1,5 +1,5 @@
 require 'slf4r/ruby_logger'
-Slf4r::LoggerFacade4RubyLogger.level = :info
+Slf4r::LoggerFacade4RubyLogger.level = :error
 
 require 'zkruby'
 require 'zk/rubyio'
@@ -19,7 +19,7 @@ module ZooKeeperSpecHelper
 
     def safe_close(zk)
         zk.close()
-        rescue ZooKeeperError => ex
+        rescue ZooKeeper::Error => ex
             puts "Ignoring close exception #{ex}"
     end
 

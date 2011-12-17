@@ -74,14 +74,14 @@ module ZooKeeper
         end
 
         def result(rc)
-            Errors::NONE == rc ? [ callback, response, watch_type ] : [ errback, rc, nil ] 
+            Error::NONE === rc ? [ callback, response, watch_type ] : [ errback, rc, nil ] 
         end
     end
 
     # NoNode error is expected for exists
     class ExistsPacket < Packet
         def result(rc)
-            Errors::NO_NODE == rc ? [ callback, nil, :exists ] : super(rc)
+            Error::NO_NODE === rc ? [ callback, nil, :exists ] : super(rc)
         end
     end
 
@@ -89,7 +89,7 @@ module ZooKeeper
     # cleared via disconnected() and :session_expired
     class ClosePacket < Packet
         def result(rc)
-            Errors::SESSION_EXPIRED == rc ? [ callback, nil, nil ] : super(rc)
+            Error::SESSION_EXPIRED == rc ? [ callback, nil, nil ] : super(rc)
         end
     end
 end
