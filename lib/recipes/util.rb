@@ -8,6 +8,22 @@ module ZooKeeper
     end
 
     class Client
+        
+        # Recursive make path
+        #
+        # Note that this will send parallel creates for ALL nodes up to the root
+        # and then ignores any NODE_EXISTS errors.
+        # You generally only want to call this after receiving a NO_NODE error from a 
+        # simple {#create}
+        #
+        # @overload mkpath(path,acl)
+        #    @param [String] path
+        #    @param [Data::ACL] acl the access control list to apply to any created nodes
+        #    @return 
+        #    @raise [Error]
+        # @overload mkpath(path,acl)
+        #    @return [AsyncOp]
+        #    @yield  [] callback invoked if path creation is successful
         def mkpath(path,acl=ZK::ACL_OPEN_UNSAFE,errback=UtilErrback.new(),&blk)
             return synchronous_call(:mkpath,path,acl) unless block_given?
 
@@ -26,8 +42,7 @@ module ZooKeeper
                     if i == -1
                         if ZK::Error::NODE_EXISTS === err
                             blk.call()
-                        elsif ZK::Error::CONNECTION_LOST === err || ( 
-                                                                     ZK::Error::NO_NODE && connection_lost )
+                        elsif ZK::Error::CONNECTION_LOST === err || ( ZK::Error::NO_NODE && connection_lost )
                             mkpath(path,acl,errback,&blk)
                         else 
                             errback.invoke(err)
@@ -42,13 +57,27 @@ module ZooKeeper
 
         end
 
-        # async recursive delete
-        # if you get a session expiry in the middle of this you will
-        # end up with a partially completed recursive delete
-        # in all other circumstances it will eventually complete 
+        # Recursive delete
+        #
+        # Although this method itself can be called synchronously all the zk activity
+        # is asynchronous, ie all subnodes are removed in parallel
+        #
+        # Will retry on connection loss, or if some other activity is adding nodes in parallel.
+        # If you get a session expiry in the middle of this you will end up with a
+        # partially completed recursive delete. In all other circumstances it will eventually
+        # complete.
+        #
+        # @overload rmpath(path,version)
+        #    @param [String] path this node and all its children will be recursively deleted
+        #    @param [FixNum] version the expected version to be deleted (-1 to match any version).
+        #         Only applies to the top level path
+        #    @return 
+        #    @raise [Error]
+        # @overload rmpath(path,version)
+        #    @return [AsyncOp]
+        #    @yield  [] callback invoked if delete is successful
         def rmpath(path,version = -1,errback=UtilErrback.new(), &blk)
             return synchronous_call(:rmpath,path,version) unless block_given?
-
 
             delete_proc = Proc.new() do 
 
@@ -57,7 +86,7 @@ module ZooKeeper
                 del_op.errback do |err|
                     case err
                     when ZK::Error::NO_NODE
-                        blk.call()
+                        if version < 0 then  blk.call() else errback.invoke(err) end
                     when ZK::Error::NOT_EMPTY, ZK::Error::CONNECTION_LOST
                         #try again
                         rmpath(path,version,errback,&blk)
@@ -98,7 +127,7 @@ module ZooKeeper
                 case err
                 when ZK::Error::NO_NODE
                     #someone beat us to it
-                    blk.call()
+                    if version < 0 then blk.call() else errback.invoke(err) end
                 when ZK::Error::CONNECTION_LOST
                     #try again
                     rmpath(path,version,errback,&blk)

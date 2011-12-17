@@ -9,6 +9,7 @@ describe "Client utilities" do
             unless @zk.exists("/zkruby")
                 @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE)
             end
+            @zk_ch = connect(:chroot => "/zkruby")
         end
 
         after(:all) do
@@ -41,6 +42,13 @@ describe "Client utilities" do
             end
 
             it "should not raise error if something else creates an intermediate path"
+
+            it "should work with chroot" do
+                @zk_ch.mkpath("/spec-util/test/mkpath")
+                stat,data = @zk_ch.get("/spec-util/test")
+                data.should == ""
+            end
+
         end
 
         context "Client#rmpath" do
@@ -60,8 +68,14 @@ describe "Client utilities" do
                 @zk.rmpath("/zkruby/spec_util/one")
                 @zk.exists?("/zkruby/spec_util/one").should be_false
             end
+           
             
             it "should not raise errors if some nodes are deleted by something else during processing"
             it "should fight to the death if something else is creating subnodes"
+
+            it "should work with chroot" do
+                @zk_ch.rmpath("/spec-util")
+                @zk_ch.exists?("/spec-util").should be_false
+            end
         end
 end
