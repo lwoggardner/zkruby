@@ -1,3 +1,4 @@
+#TODO This belongs to jute rather than zookeeper and ideally would be a separate project/gem
 require 'bindata'
 
 class ZKBuffer < BinData::Primitive

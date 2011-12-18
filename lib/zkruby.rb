@@ -1,9 +1,9 @@
 require 'slf4r'
 require 'zk/bindata'
-require 'generated/records'
 require 'zk/enum'
 require 'zk/protocol'
 require 'zk/session'
+require 'jute/zookeeper'
 
 # A pure ruby implementation of the zk client library
 #
