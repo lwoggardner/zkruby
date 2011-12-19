@@ -11,10 +11,15 @@ module ZooKeeper
      #   #receive_records and #send_data to be implemented
      module Protocol
         MIN_PACKET = 5 #TODO Work out what the min packet size really is
+        include Slf4r::Logger
 
         def receive_data data # :nodoc:
-          (@buffer ||= StringIO.new()) << data
+
+          @buffer ||= StringIO.new()
+          @buffer.seek(0, IO::SEEK_END)
+          @buffer << data
           @buffer.rewind
+          logger.debug { "Received #{data.length} bytes: buffer length = #{@buffer.length} pos = #{@buffer.pos}" }
           loop do
             if @buffer.length - @buffer.pos > MIN_PACKET 
                 packet_size = @buffer.read(4).unpack("N").first
@@ -28,15 +33,17 @@ module ZooKeeper
                         leftover = @buffer.read(packet_size).unpack("H*")[0]
                         raise ProtocolError, "Records not consumed #{leftover}"
                     end
-                    
+                    logger.debug { "Consumed packet #{packet_size}. Buffer pos=#{@buffer.pos}, length=#{@buffer.length}" }
                     next
                 else
                     # found the last partial packet
                     @buffer.seek(-4, IO::SEEK_CUR)
+                    logger.debug { "Buffer contains #{@buffer.length} of #{packet_size} packet" }
                 end
             end
             break
-          end 
+          end
+          # reset the buffer
           @buffer = StringIO.new(@buffer.read()) if @buffer.pos > 0
         end
 
@@ -50,6 +57,7 @@ module ZooKeeper
             bindata = records.collect { |r| s = r.to_binary_s; length += s.length; s }
             send_data([length].pack("N"))
             bindata.each { |b| send_data(b) }
+            logger.debug { "Sent #{length} byte packet containing  #{records.length} records" }
         end
      end
 

@@ -99,6 +99,7 @@ module ZooKeeper::RubyIO
       while socket # effectively forever
         begin
           data = socket.read_nonblock(1024)
+          logger.debug { "Received (#{data.length})" + data.unpack("H*")[0] }
           receive_data(data)
           ping = 0
         rescue IO::WaitReadable

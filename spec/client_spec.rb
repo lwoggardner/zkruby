@@ -37,6 +37,8 @@ describe ZooKeeper::Client do
             new_stat.should be_a ZooKeeper::Data::Stat
             stat,data = @zk.get("/zkruby/rspec")
             data.should == "different data"
+            cstat,children = @zk.children("/zkruby")
+            children.should include("rspec")
             @zk.delete("/zkruby/rspec",stat.version)
             @zk.exists?("/zkruby/rspec").should be_false
         end
