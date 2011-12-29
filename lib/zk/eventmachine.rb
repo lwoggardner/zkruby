@@ -1,6 +1,20 @@
 
 require 'eventmachine'
-require 'fiber' 
+if defined?(JRUBY_VERSION) && JRUBY_VERSION == "1.6.5"
+    require 'jruby'
+    org.jruby.ext.fiber.FiberExtLibrary.new.load(JRuby.runtime, false)
+    class org::jruby::ext::fiber::ThreadFiber
+        field_accessor :state
+    end
+
+    class Fiber
+        def alive?
+            JRuby.reference(self).state != org.jruby.ext.fiber.ThreadFiberState::FINISHED
+        end
+    end
+else
+    require 'fiber'
+end
 
 
 module ZooKeeper

@@ -1,7 +1,5 @@
 require 'shared/client_binding'
-require 'eventmachine'
 require 'zk/eventmachine'
-require 'fiber'
 
 module EMHelper
     alias :restart_cluster_orig :restart_cluster

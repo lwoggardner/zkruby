@@ -20,7 +20,8 @@ module ZooKeeper
 
 
     # Synchronous methods will raise an instance of ZooKeeper::Error
-    # that can be caught in the standard way
+    # that can be caught in the standard (1.9.2) way.
+    # NOTE this is not valid syntax for JRuby 1.6.x , even in 1.9 mode
     # @example
     #   begin
     #       zk.create(...)

@@ -31,17 +31,21 @@ describe Enumeration do
     end
 
     context "errors" do
+        #HMM the === syntax for rescue is valid for MRI 1.9.2 but not yet supported in JRuby
         it "should be raisable with get" do
             begin
                 raise TestError.get(:badone), "mymessage"
-            rescue TestError::BADONE
+            rescue TestError::BADONE => ex
+
+                # do nothing
             end
         end
 
         it "should be raisable with constant" do
             begin
                 raise TestError::OOPS
-            rescue TestError::fetch(20)
+            rescue TestError::fetch(20) => ex
+                # do nothing
             end
         end
 
