@@ -9,8 +9,9 @@ module ZooKeeper
         DEFAULT_PORT = 2181
 
         include Slf4r::Logger
-
+        
         attr_reader :ping_interval
+        attr_reader :ping_logger
         attr_reader :timeout
         attr_reader :conn
         attr_accessor :watcher
@@ -41,6 +42,8 @@ module ZooKeeper
             end
 
             @watcher = nil
+
+            @ping_logger = Slf4r::LoggerFacade.new("ZooKeeper::Session::Ping")
 
         end
     
@@ -85,7 +88,7 @@ module ZooKeeper
         # Connection API - called when no data has been received for #ping_interval
         def ping()
             if @keeper_state == :connected
-                logger.debug { "Ping send" }
+                ping_logger.debug { "Ping send" }
                 hdr = Proto::RequestHeader.new(:xid => -2, :_type => 11)
                 conn.send_records(hdr)
             end
@@ -125,7 +128,7 @@ module ZooKeeper
         end
        
         def queue_request(request,op,opcode,response=nil,watch_type=nil,watcher=nil,ptype=Packet,&callback)
-            raise Error.SESSION_EXPIRED unless @client_state == :ready
+            raise Error.SESSION_EXPIRED, "Session expired due to client state #{@client_state}"  unless @client_state == :ready
 
             watch_type, watcher = resolve_watcher(watch_type,watcher)
 
@@ -135,7 +138,7 @@ module ZooKeeper
             
             queue_packet(packet)
             
-            AsyncOp.new(packet)
+            binding.async_op(packet)
         end
 
         def close(&blk)
@@ -152,7 +155,7 @@ module ZooKeeper
             # before sending the close packet since it immediately causes the socket
             # to close.
             queue_close_packet_if_necessary()
-            AsyncOp.new(close_packet)
+            binding.async_op(close_packet)
         end
         private
         attr_reader :watches
@@ -283,11 +286,10 @@ module ZooKeeper
         
         def process_reply(packet_io)
               header = Proto::ReplyHeader.read(packet_io)
-              logger.debug { "Reply header: #{header.inspect}" }
 
               case header.xid.to_i
               when -2
-                logger.debug { "Ping reply" }
+                ping_logger.debug { "Ping reply" }
               when -4
                 logger.debug { "Auth reply" }
                 session_expired(:auth_failed) unless header.err.to_i == 0
@@ -313,7 +315,7 @@ module ZooKeeper
                    # Treat this like a dropped connection, and then force the connection
                    # to be dropped. But wait for the connection to notify us before
                    # we actually update our keeper_state
-                   packet.error(:disconnected)
+                   invoke_response(*packet.error(:disconnected))
                    @conn.disconnect() 
                 else
                     

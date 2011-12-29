@@ -1,13 +1,23 @@
-require 'slf4r/ruby_logger'
-Slf4r::LoggerFacade4RubyLogger.level = :info
 
+require 'slf4r/logging_logger'
 require 'zkruby'
 require 'zk/rubyio'
+
+Logging.logger.root.level = :error
+Logging.logger.root.appenders = Logging.appenders.stdout(:layout => Logging.layouts.pattern(:pattern => '%c [%T] %-5l: %m\n'))
+Logging.logger[ZooKeeper::RubyIO::Connection].level = :error
+Logging.logger[ZooKeeper::RubyIO::Binding].level = :error
+Logging.logger[ZooKeeper::Session].level = :error
+Logging.logger["ZooKeeper::Session::Ping"].level = :error
+
+Thread.current[:name] = "Rspec::Main"
 module ZooKeeperSpecHelper
+
+    include Slf4r::Logger
 
     def restart_cluster(delay=0)
         system("../../bin/zkServer.sh stop >> zk.out")
-        sleep(delay) if delay > 0
+        Kernel::sleep(delay) if delay > 0
         if (::RUBY_PLATFORM == "java")
             #in JRuby 1.6.3 system does not return 
             system("../../bin/zkServer.sh start >> zk.out &")
@@ -30,3 +40,4 @@ module ZooKeeperSpecHelper
 end
 
 include ZooKeeperSpecHelper
+

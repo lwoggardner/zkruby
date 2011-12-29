@@ -12,8 +12,9 @@ require 'jute/zookeeper'
 #
 module ZooKeeper
 
+
     # Use the ZooKeeper version and last digit for us
-    VERSION = "3.3.3.0"
+    VERSION = "3.3.3.1"
 
     BINDINGS = []
 
@@ -65,6 +66,7 @@ module ZooKeeper
         enum :all, READ | WRITE | CREATE | DELETE | ADMIN
     end
 
+    
     # Combine permissions constants
     # @param [Perms] perms... list of permissions to combine, can be {Perms} constants, symbols or ints 
     # @return [Fixnum] integer representing the combined permission
@@ -113,39 +115,16 @@ module ZooKeeper
     ACL_CREATOR_ALL = CREATOR_ALL_ACL
     ACL_READ_UNSAFE = READ_ACL_UNSAFE
 
-    # Returned by asynchronous calls
-    # 
-    # @example
-    #    op = zk.stat("\apath") { ... }
-    #    op.on_error do |err|
-    #      case err
-    #      when ZK::Error::SESSION_EXPIRED 
-    #           puts "Session expired"
-    #      else
-    #           puts "Some other error"
-    #      end
-    #    end
-    #
-    class AsyncOp
-        def initialize(packet)
-            @packet = packet
-        end
 
-        # Provide an error callback. 
-        # @param callback the error callback as a block
-        # @yieldparam [Fixnum] err the error code as an integer
-        # @see Errors
-        def errback(&blk)
-            @packet.errback=blk
-        end
-
-        # @param blk the error callback as a Proc
-        def errback=(blk)
-            @packet.errback=blk
-        end
-
-        alias :on_error :errback
+    def self.seq_to_path(path,id)
+        format("%s%010d",path,id)
     end
+
+    def self.path_to_seq(path)
+        matches = /^(.*)(\d{10})$/.match(path)
+        matches ? [matches[1],matches[2].to_i] : [path,nil]
+    end
+
 
     # Main method for connecting to a client
     # @param addresses [Array<String>] list of host:port for the ZK cluster as Array or comma separated String
@@ -449,7 +428,15 @@ module ZooKeeper
 
         private
         def synchronous_call(method,*args)
-            @binding.synchronous_call(self,method,*args)
+            op = self.send(method,*args) do |*results|
+                op.results = results
+            end
+
+            op.on_error do |err|
+                op.results = if err.kind_of?(Exception) then err else ZK::Error.lookup(err) end
+            end
+        
+            return op.waitfor()
         end
 
         def queue_request(*args,&blk)
@@ -468,3 +455,4 @@ end
 
 # Shorthand
 ZK=ZooKeeper
+

@@ -53,7 +53,7 @@ module ZooKeeper
                 end
             end
 
-            AsyncOp.new(errback)
+            @binding.async_op(errback)
 
         end
 
@@ -135,7 +135,7 @@ module ZooKeeper
                     errback.invoke(err)
                 end
             end
-            AsyncOp.new(errback)
+            @binding.async_op(errback)
         end
     end
 end

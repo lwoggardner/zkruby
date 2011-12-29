@@ -100,5 +100,59 @@ module ZooKeeper
             Error::SESSION_EXPIRED == rc ? [ callback, nil, nil ] : super(rc)
         end
     end
+    
+    # Returned by asynchronous calls
+    # 
+    # @example
+    #    op = zk.stat("\apath") { ... }
+    #    op.on_error do |err|
+    #      case err
+    #      when ZK::Error::SESSION_EXPIRED 
+    #           puts "Session expired"
+    #      else
+    #           puts "Some other error"
+    #      end
+    #    end
+    #
+    class AsyncOp
+        def initialize(packet)
+            @packet = packet
+        end
+
+        # Provide an error callback. 
+        # @param callback the error callback as a block
+        # @yieldparam [Fixnum] err the error code as an integer
+        # @see Errors
+        def errback(&blk)
+            @packet.errback=blk
+        end
+
+        # @param blk the error callback as a Proc
+        def errback=(blk)
+            @packet.errback=blk
+        end
+
+        alias :on_error :errback
+
+        # call this from within your callback
+        # @param results the results or exception to save pending a call to {#waitfor}
+        def results=(results);
+            raise NotImplementedError, ":results= to be implemented by binding"
+        end
+        
+        # will block until {#results=} is called
+        # @return the results 
+        # @raise [Exception] if results.kind_of?(Exception)
+        def waitfor();
+            results = wait_result()
+            raise results if @results.kind_of?(Exception)
+            return results
+        end
+
+        private
+        def wait_result();
+            raise NotImplementedError, ":wait_result to be privately implemented by binding"
+        end
+    end
 end
 
