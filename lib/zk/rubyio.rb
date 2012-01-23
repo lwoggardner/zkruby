@@ -148,6 +148,11 @@ module ZooKeeper::RubyIO
         def self.available?
             true
         end
+
+        def self.context(&context_block)
+           yield Thread 
+        end
+
         def initialize()
             @event_queue = Queue.new()
         end
@@ -165,13 +170,16 @@ module ZooKeeper::RubyIO
             return true
         end
 
-        def start(session)
+        def start(client,session)
             @session = session
             @session.extend(MonitorMixin)
 
             # start the event thread
             @event_thread = Thread.new() do
                 Thread.current[:name] = "ZooKeeper::RubyIO::EventLoop"
+
+                # In this thread, the current client is always this client!
+                Thread.current[ZooKeeper::CURRENT] = [client]
                 loop do
                     break unless pop_event_queue() 
                 end
@@ -204,72 +212,97 @@ module ZooKeeper::RubyIO
         end
 
 
-        def close(&blk)
-            session.synchronize { session.close(&blk) }
-        end
-
-        def queue_request(*args,&blk)
-            session.synchronize { session.queue_request(*args,&blk) }
-        end
-
-        def async_op(packet)
-            if Thread.current == @event_thread
-                EventThreadAsyncOp.new(self,packet)
-            else
-                AsyncOp.new(packet)
+        def close(&callback)
+            op = AsyncOp.new(self,&callback)
+            
+            session.synchronize do
+                    session.close() do |error,response|
+                        op.resume(error,response)
+                    end
             end
+
+            op
+            
+        end
+
+        def queue_request(*args,&callback)
+
+            op = AsyncOp.new(self,&callback)
+            
+            session.synchronize do 
+                session.queue_request(*args) do |error,response|
+                    op.resume(error,response)                    
+                end
+            end
+
+            op
+        end
+
+        def event_thread?
+            Thread.current.equal?(@event_thread)
         end
 
         def invoke(*args)
             @event_queue.push(args)
             logger.debug { "Pushed #{args[0]} (#{@event_queue.length})" }
         end
+
     end #Binding
-
-    class EventThreadAsyncOp < ::ZooKeeper::AsyncOp
-
-        def initialize(binding,packet)
-            super(packet)
-            @rubyio = binding
-        end
-
-        def results=(results)
-            @results = results
-        end
-
-        private
-        def wait_result()
-            logger.debug("Nested synchronous call!")
-            # since we are in the event thread we have to keep going
-            until defined?(@results)
-                break unless @rubyio.pop_event_queue()
-            end
-            @results
-        end
-    end
 
     class AsyncOp < ::ZooKeeper::AsyncOp
 
-        attr_reader :mutex, :cv
-        def initialize(packet)
-            super(packet)
+        def initialize(binding,&callback)
             @mutex = Monitor.new
             @cv = @mutex.new_cond()
+            @callback = callback
+            @rubyio = binding
         end
 
-        def results=(results)
+        def resume(error,response)
             mutex.synchronize do
-                @results = results
+                @error = error
+                @result = nil
+                begin
+                    @result = @callback.call(response) unless error
+                rescue StandardError => ex
+                    @error = ex
+                end
+               
+                if @error && @errback
+                    begin
+                        @result = @errback.call(@error) 
+                        @error = nil
+                    rescue StandardError => ex
+                        @error = ex
+                    end
+                end
+
                 cv.signal()
             end
         end
 
         private
-        def wait_result()
-            mutex.synchronize do
-                cv.wait()
+            attr_reader :mutex, :cv, :error, :result
+
+        def set_error_handler(errback)
+            @errback = errback
+        end
+     
+        def wait_value()
+            if @rubyio.event_thread?
+                #Waiting in the event thread (eg made a synchronous call inside a callback)
+                #Keep processing events until we are resumed
+                until defined?(@result)
+                    break unless @rubyio.pop_event_queue()
+                end
+            else
+                mutex.synchronize do
+                    cv.wait()
+                end
             end
-            @results
+
+            raise error if error
+            result
         end
     end
 

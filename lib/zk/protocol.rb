@@ -63,7 +63,6 @@ module ZooKeeper
 
     class Packet
         attr_reader :xid,:op,:opcode,:request,:response, :watch_type, :watcher, :callback
-        attr_accessor :errback
        
         def initialize(xid,op,opcode,request,response,watch_type,watcher,callback)
             @xid=xid;@op=op;@opcode=opcode
@@ -77,19 +76,21 @@ module ZooKeeper
             request.path
         end
 
+        
         def error(reason)
-            result(reason)[0..1] # don't need the watch
+            result(reason)[0..2] # don't need the watch
         end
 
         def result(rc)
-            Error::NONE === rc ? [ callback, response, watch_type ] : [ errback, rc, nil ] 
+            error = if (Error::NONE === rc) then nil else Error.lookup(rc) end
+            [ callback, error ,response, watch_type ] 
         end
     end
 
     # NoNode error is expected for exists
     class ExistsPacket < Packet
         def result(rc)
-            Error::NO_NODE === rc ? [ callback, nil, :exists ] : super(rc)
+            Error::NO_NODE === rc ? [ callback, nil, nil, :exists ] : super(rc)
         end
     end
 
@@ -97,60 +98,64 @@ module ZooKeeper
     # cleared via disconnected() and :session_expired
     class ClosePacket < Packet
         def result(rc)
-            Error::SESSION_EXPIRED == rc ? [ callback, nil, nil ] : super(rc)
+            Error::SESSION_EXPIRED == rc ? [ callback, nil, nil, nil ] : super(rc)
         end
     end
+
     
     # Returned by asynchronous calls
     # 
     # @example
-    #    op = zk.stat("\apath") { ... }
+    #    op = zk.stat("\apath") { |stat| something_with_stat() }
+    #
     #    op.on_error do |err|
     #      case err
     #      when ZK::Error::SESSION_EXPIRED 
-    #           puts "Session expired"
+    #           puts "Ignoring session expired"
     #      else
-    #           puts "Some other error"
+    #           raise err
     #      end
     #    end
     #
+    #    begin
+    #       result_of_somthing_with_stat = op.value
+    #    rescue StandardError => ex
+    #       puts "Oops, my error handler raised an exception"
+    #    end
+    #
+    #
     class AsyncOp
-        def initialize(packet)
-            @packet = packet
-        end
 
         # Provide an error callback. 
-        # @param callback the error callback as a block
-        # @yieldparam [Fixnum] err the error code as an integer
-        # @see Errors
-        def errback(&blk)
-            @packet.errback=blk
+        # @param block the error callback as a block
+        # @yieldparam [StandardError] the error raised by the zookeeper operation OR by its callback
+        def errback(&block)
+            set_error_handler(block)
         end
 
-        # @param blk the error callback as a Proc
-        def errback=(blk)
-            @packet.errback=blk
+        # @param block the error callback as a Proc
+        def errback=(block)
+            set_error_handler(block)
         end
 
         alias :on_error :errback
 
-        # call this from within your callback
-        # @param results the results or exception to save pending a call to {#waitfor}
-        def results=(results);
-            raise NotImplementedError, ":results= to be implemented by binding"
-        end
-        
-        # will block until {#results=} is called
-        # @return the results 
-        # @raise [Exception] if results.kind_of?(Exception)
-        def waitfor();
-            results = wait_result()
-            raise results if @results.kind_of?(Exception)
-            return results
+        # Wait for the async op to finish and returns its value
+        # will raise an exception if 
+        #    the operation itself fails and there is no error handler
+        #    the callback raises a StandardError and there is no error handler
+        #    the error handler raises StandardError
+        def value();
+            wait_value()
         end
 
         private
-        def wait_result();
+
+        def set_error_handler(blk)
+            raise NotImplementedError, ":wait_result to be privately implemented by binding"
+        end
+
+        def wait_value();
             raise NotImplementedError, ":wait_result to be privately implemented by binding"
         end
     end

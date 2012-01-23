@@ -1,15 +1,15 @@
 require 'set'
 module ZooKeeper
-    
-     # Represents an session that may span connections
-     class Session
+
+    # Represents an session that may span connections
+    class Session
 
         DEFAULT_TIMEOUT = 4
         DEFAULT_CONNECT_DELAY = 0.2
         DEFAULT_PORT = 2181
 
         include Slf4r::Logger
-        
+
         attr_reader :ping_interval
         attr_reader :ping_logger
         attr_reader :timeout
@@ -17,12 +17,12 @@ module ZooKeeper
         attr_accessor :watcher
 
         def initialize(binding,addresses,options=nil)
-            
+
             @binding = binding
 
             @addresses = parse_addresses(addresses)
             parse_options(options)
-            
+
             # These are the server states
             # :disconnected, :connected, :auth_failed, :expired
             @keeper_state = nil
@@ -46,7 +46,7 @@ module ZooKeeper
             @ping_logger = Slf4r::LoggerFacade.new("ZooKeeper::Session::Ping")
 
         end
-    
+
         def chroot(path)
             return @chroot + path
         end
@@ -56,6 +56,11 @@ module ZooKeeper
             path.slice(@chroot.length..-1)
         end
 
+        # close won't run your block if the connection is 
+        # already closed, so this is how you can check
+        def closed?
+            @client_state == :closed
+        end
 
         # Connection API - testing whether to send a ping
         def connected?()
@@ -70,19 +75,19 @@ module ZooKeeper
             send_auth_data()
             reset_watches()
         end
-        
+
 
         # Connection API - called when data is available, reads and processes one packet/event
         # @param io <IO> 
         def receive_records(io)
-           case @keeper_state
-           when :disconnected
-              complete_connection(io)
-           when :connected
-              process_reply(io)
-           else
-              logger.warn { "Receive packet for closed session #{@keeper_state}" }
-           end
+            case @keeper_state
+            when :disconnected
+                complete_connection(io)
+            when :connected
+                process_reply(io)
+            else
+                logger.warn { "Receive packet for closed session #{@keeper_state}" }
+            end
         end
 
         # Connection API - called when no data has been received for #ping_interval
@@ -96,16 +101,16 @@ module ZooKeeper
 
         # Connection API - called when the connection has dropped from either end
         def disconnected()
-           @conn = nil
-           logger.info { "Disconnected id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
-          
-           # We keep trying to reconnect until the session expiration time is reached
-           @disconnect_time = Time.now if @keeper_state == :connected
-           time_since_first_disconnect = (Time.now - @disconnect_time) 
+            @conn = nil
+            logger.info { "Disconnected id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
 
-           if @client_state == :closed || time_since_first_disconnect > timeout
+            # We keep trying to reconnect until the session expiration time is reached
+            @disconnect_time = Time.now if @keeper_state == :connected
+            time_since_first_disconnect = (Time.now - @disconnect_time) 
+
+            if @client_state == :closed || time_since_first_disconnect > timeout
                 session_expired()
-           else
+            else
                 # if we are connected then everything in the pending queue has been sent so
                 # we must clear
                 # if not, then we'll keep them and hope the next reconnect works
@@ -115,7 +120,7 @@ module ZooKeeper
                 end
                 @keeper_state = :disconnected
                 reconnect()
-           end
+            end
         end
 
         # Start the session - called by the ProtocolBinding
@@ -126,37 +131,38 @@ module ZooKeeper
             logger.debug ("Starting new zookeeper client session")
             reconnect()
         end
-       
+
         def queue_request(request,op,opcode,response=nil,watch_type=nil,watcher=nil,ptype=Packet,&callback)
             raise Error.SESSION_EXPIRED, "Session expired due to client state #{@client_state}"  unless @client_state == :ready
-
             watch_type, watcher = resolve_watcher(watch_type,watcher)
 
             xid = next_xid
 
             packet = ptype.new(xid,op,opcode,request,response,watch_type,watcher, callback)
-            
+
             queue_packet(packet)
-            
-            binding.async_op(packet)
         end
 
-        def close(&blk)
-            #TODO possibly this should not be an exception
-            #TODO although if not an exception, perhaps should yield the block
-            raise Error.SESSION_EXPIRED unless @client_state == :ready
+        def close(&callback)
+            case @client_state
+            when :ready
+                # we keep the requested block in a close packet
+                @close_packet = ClosePacket.new(next_xid(),:close,-11,nil,nil,nil,nil,callback)
+                close_packet = @close_packet 
+                @client_state = :closing
 
-            # we keep the requested block in a close packet
-            @close_packet = ClosePacket.new(next_xid(),:close,-11,nil,nil,nil,nil,blk)
-            close_packet = @close_packet 
-            @client_state = :closing
-
-            # If there are other requests in flight, then we wait for them to finish
-            # before sending the close packet since it immediately causes the socket
-            # to close.
-            queue_close_packet_if_necessary()
-            binding.async_op(close_packet)
+                # If there are other requests in flight, then we wait for them to finish
+                # before sending the close packet since it immediately causes the socket
+                # to close.
+                queue_close_packet_if_necessary()
+                @close_packet
+            when :closed, :closing
+                raise ProtocolError, "Already closed"
+            else
+                raise ProtocolError, "Unexpected state #{@client_state}"
+            end
         end
+
         private
         attr_reader :watches
         attr_reader :binding
@@ -184,7 +190,7 @@ module ZooKeeper
                 address[0..1]
             end
         end
-        
+
         def parse_options(options)
             @timeout = options.fetch(:timeout,DEFAULT_TIMEOUT)
             @max_connect_delay = options.fetch(:connect_delay,DEFAULT_CONNECT_DELAY)
@@ -195,32 +201,32 @@ module ZooKeeper
         end
 
         def reconnect()
-           
+
             #Rotate address
             host,port = @addresses.shift
             @addresses.push([host,port])
 
             delay = rand() * @max_connect_delay
-            
+
             logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with delay=#{delay}, timeout=#{@connect_timeout}" } 
             binding.connect(host,port,delay,@connect_timeout)
         end
 
-       
+
         def session_expired(reason=:expired)
-           clear_pending_queue(reason)
-           
-           invoke_response(*@close_packet.error(reason)) if @close_packet
+            clear_pending_queue(reason)
 
-           if @client_state == :closed
-              logger.info { "Session closed id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
-           else
-              logger.warn { "Session expired id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
-           end
+            invoke_response(*@close_packet.error(reason)) if @close_packet
 
-           invoke_watch(@watcher,KeeperState::EXPIRED,nil,WatchEvent::NONE) if @watcher
-           @keeper_state = reason
-           @client_state = :closed
+            if @client_state == :closed
+                logger.info { "Session closed id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
+            else
+                logger.warn { "Session expired id=#{@session_id}, keeper=:#{@keeper_state}, client=:#{@client_state}" }
+            end
+
+            invoke_watch(@watcher,KeeperState::EXPIRED,nil,WatchEvent::NONE) if @watcher
+            @keeper_state = reason
+            @client_state = :closed
         end
 
         def complete_connection(response)
@@ -244,7 +250,7 @@ module ZooKeeper
 
                 logger.debug { "Sending #{@pending_queue.length} queued packets" }
                 @pending_queue.each { |p| send_packet(p) }
-                
+
                 queue_close_packet_if_necessary()
                 invoke_watch(@watcher,KeeperState::CONNECTED,nil,WatchEvent::NONE) if @watcher
             end
@@ -273,36 +279,36 @@ module ZooKeeper
         # This way a watch is only ever triggered exactly once
         def reset_watches()
             unless watches[:children].empty? && watches[:data].empty? && watches[:exists].empty?
-               req = Proto::SetWatches.new()
-               req.relative_zxid = @last_zxid_seen
-               req.data_watches = watches[:data].keys
-               req.child_watches = watches[:children].keys
-               req.exist_watches = watches[:exists].keys
+                req = Proto::SetWatches.new()
+                req.relative_zxid = @last_zxid_seen
+                req.data_watches = watches[:data].keys
+                req.child_watches = watches[:children].keys
+                req.exist_watches = watches[:exists].keys
 
-               packet = Packet.new(-8,:set_watches,101,req,nil,nil,nil,nil)
-               send_packet(packet)
+                packet = Packet.new(-8,:set_watches,101,req,nil,nil,nil,nil)
+                send_packet(packet)
             end
         end
-        
-        def process_reply(packet_io)
-              header = Proto::ReplyHeader.read(packet_io)
 
-              case header.xid.to_i
-              when -2
+        def process_reply(packet_io)
+            header = Proto::ReplyHeader.read(packet_io)
+
+            case header.xid.to_i
+            when -2
                 ping_logger.debug { "Ping reply" }
-              when -4
+            when -4
                 logger.debug { "Auth reply" }
                 session_expired(:auth_failed) unless header.err.to_i == 0
-              when -1
+            when -1
                 #Watch notification
                 event = Proto::WatcherEvent.read(packet_io)
                 logger.debug { "Watch notification #{event.inspect} " }
                 process_watch_notification(event.state.to_i,event.path,event._type.to_i)
-              when -8
+            when -8
                 #Reset watch reply
                 logger.debug { "SetWatch reply"}
                 #TODO If error, send :disconnected to all watches
-              else
+            else
                 # A normal packet reply. They should come in the order we sent them
                 # so we just match it to the packet at the front of the queue
                 packet = @pending_queue.shift
@@ -310,66 +316,66 @@ module ZooKeeper
 
                 if (packet.xid.to_i != header.xid.to_i)
 
-                   logger.error { "Bad XID! expected=#{packet.xid}, received=#{header.xid}" }
+                    logger.error { "Bad XID! expected=#{packet.xid}, received=#{header.xid}" }
 
-                   # Treat this like a dropped connection, and then force the connection
-                   # to be dropped. But wait for the connection to notify us before
-                   # we actually update our keeper_state
-                   invoke_response(*packet.error(:disconnected))
-                   @conn.disconnect() 
+                    # Treat this like a dropped connection, and then force the connection
+                    # to be dropped. But wait for the connection to notify us before
+                    # we actually update our keeper_state
+                    invoke_response(*packet.error(:disconnected))
+                    @conn.disconnect() 
                 else
-                    
-                    @last_zxid_seen = header.zxid
-                    callback, response, watch_type  = packet.result(header.err.to_i)
-                    logger.debug { "Reply response: #{response.inspect}" } 
-                    invoke_response(callback,response,packet_io)
 
-                    if (packet.watch_type) 
-                        @watches[packet.watch_type][packet.path] << packet.watcher 
-                        logger.debug { "Registered #{packet.watcher} for type=#{packet.watch_type} at #{packet.path}" }
+                    @last_zxid_seen = header.zxid
+                    
+                    callback, error, response, watch_type =  packet.result(header.err.to_i)
+                    invoke_response(callback, error, response, packet_io)
+
+                    if (watch_type) 
+                        @watches[watch_type][packet.path] << packet.watcher 
+                        logger.debug { "Registered #{packet.watcher} for type=#{watch_type} at #{packet.path}" }
                     end
                     queue_close_packet_if_necessary()
                 end
-              end
+            end
         end
-        
+
 
         def process_watch_notification(state,path,event)
-            
+
             watch_event = WatchEvent.fetch(event)
             watch_types = watch_event.watch_types()
 
             keeper_state = KeeperState.fetch(state)
 
             watches = watch_types.inject(Set.new()) do | result, watch_type |
-               more_watches = @watches[watch_type].delete(path)
-               result.merge(more_watches) if more_watches
-               result
+                more_watches = @watches[watch_type].delete(path)
+            result.merge(more_watches) if more_watches
+            result
             end
-            
+
             if watches.empty?
                 logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
             end
             watches.each { | watch | invoke_watch(watch,keeper_state,path,watch_event) }      
-             
+
         end
 
         def invoke_watch(watch,state,path,event)
-                logger.debug { "Watch #{watch} triggered with #{state}, #{path}. #{event}" }
-                if watch.respond_to?(:process_watch)
-                   callback = Proc.new() { |state,path,event| watch.process_watch(state,path,event) } 
-                elsif watch.respond_to?(:call)
-                   callback = watch
-                else
-                   raise ProtocolError("Bad watcher #{watch}")
-                end
+            logger.debug { "Watch #{watch} triggered with #{state}, #{path}. #{event}" }
+            if watch.respond_to?(:process_watch)
+                callback = Proc.new() { |state,path,event| watch.process_watch(state,path,event) } 
+            elsif watch.respond_to?(:call)
+                callback = watch
+            else
+                raise ProtocolError("Bad watcher #{watch}")
+            end
 
-                binding.invoke(callback,state,unchroot(path),event)
+            binding.invoke(callback,state,unchroot(path),event)
         end
 
         def clear_pending_queue(reason)
-           @pending_queue.each  { |p| invoke_response(*p.error(reason)) }
-           @pending_queue.clear
+            @pending_queue.each  { |p| invoke_response(*p.error(reason)) }
+            @pending_queue.clear
         end
 
         def queue_close_packet_if_necessary
@@ -381,16 +387,21 @@ module ZooKeeper
             end
         end
 
-        def invoke_response(callback,response,packet_io = nil)
+        def invoke_response(callback,error,response,packet_io = nil)
             if callback
-                args = if response.respond_to?(:read) && packet_io
-                    [response.read(packet_io)]
-                elsif response
-                    [response]
-                else
-                    []
-                end
-                binding.invoke(callback,*args)
+                logger.debug { "Invoking response cb=#{callback} err=#{error} resp=#{response}"  }
+                
+                result = if error
+                             nil
+                       elsif response.respond_to?(:read) && packet_io
+                            response.read(packet_io)
+                       elsif response
+                           response
+                       else
+                           nil
+                       end
+
+                binding.invoke(callback,error,result)
             end
         end
 

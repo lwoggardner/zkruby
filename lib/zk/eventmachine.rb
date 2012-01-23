@@ -1,5 +1,6 @@
-
 require 'eventmachine'
+require 'strand'
+
 if defined?(JRUBY_VERSION) && JRUBY_VERSION == "1.6.5"
     require 'jruby'
     org.jruby.ext.fiber.FiberExtLibrary.new.load(JRuby.runtime, false)
@@ -96,8 +97,16 @@ module ZooKeeper
                 EM.reactor_running? && EM.reactor_thread?
             end
 
-            attr_reader :session
-            def start(session)
+            def self.context(&context_block)
+                s = Strand.new() do
+                    context_block.call(Strand)
+                end
+                s.join
+            end
+
+            attr_reader :client, :session
+            def start(client,session)
+                @client = client
                 @session = session
                 @session.start()
             end
@@ -110,43 +119,81 @@ module ZooKeeper
 
             # You are working in event machine it is up to you to ensure your callbacks do not block
             def invoke(callback,*args)
-                f = Fiber.new() do
-                    callback.call(*args)
+                callback.call(*args)
+            end
+
+            def queue_request(*args,&callback)
+                op = AsyncOp.new(self,&callback)
+
+                begin
+                    @session.queue_request(*args) do |error,response|
+                        op.resume(error,response)
+                    end
+                rescue ZooKeeper::Error => ex
+                    op.resume(ex,nil)
                 end
-                f.transfer()
+
+                op
             end
 
-            def queue_request(*args,&blk)
-                @session.queue_request(*args,&blk)
+            def close(&callback)
+
+                op = AsyncOp.new(self,&callback)
+
+                begin
+                    @session.close() do |error,response|
+                        op.resume(error,response) 
+                    end
+                rescue ZooKeeper::Error => ex
+                    op.resume(ex,nil)
+                end
+
+                op
             end
 
-            def async_op(packet)
-                AsyncOp.new(packet)
+        end #class Binding
+
+        class AsyncOp < ZooKeeper::AsyncOp
+
+            def initialize(binding,&callback)
+                @em_binding = binding
+
+                # Wrap the callback in its own Strand
+                @op_strand = Strand.new do
+                    #immediately pause
+                    error, response = Strand.yield
+                    Strand.current[ZooKeeper::CURRENT] =  [ @em_binding.client ] 
+                    raise error if error
+                    callback.call(response)
+                end
             end
 
-            def close(&blk)
-                @session.close(&blk)
-            end
-        end
-
-        class AsyncOp < ::ZooKeeper::AsyncOp
-
-            def initialize(packet)
-                super(packet)
-                @fiber = Fiber.current
-            end
-
-            def results=(results)
-                @fiber.resume(results)
+            def resume(error,response)
+                #TODO - raise issue in strand for resume to take arguments
+                op_strand.fiber.resume(error,response)
             end
 
             private
-            def wait_result()
-                Fiber.yield()
+
+            attr_reader :op_strand,:err_strand
+
+            def set_error_handler(errcallback)
+                @err_strand = Strand.new() do
+                    begin
+                        op_strand.value()
+                    rescue StandardError => ex
+                        Strand.current[ZooKeeper::CURRENT] =  [ @em_binding.client ] 
+                        errcallback.call(ex)   
+                    end
+                end
             end
 
-        end
-    end #module ZooKeeper::EventMachine
+            def wait_value()
+                err_strand ? err_strand.value : op_strand.value 
+            end
+
+        end #class AsyncOp
+    end #module EventMachine
 end #module ZooKeeper
 
 ZooKeeper::BINDINGS << ZooKeeper::EventMachine::Binding

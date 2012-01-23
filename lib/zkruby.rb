@@ -1,3 +1,4 @@
+require 'set'
 require 'slf4r'
 require 'zk/bindata'
 require 'zk/enum'
@@ -127,21 +128,23 @@ module ZooKeeper
     end
 
 
+    CURRENT = :zookeeper_current
     # Main method for connecting to a client
     # @param addresses [Array<String>] list of host:port for the ZK cluster as Array or comma separated String
     # @option options [Class]  :binding binding optional implementation class
     #    either {EventMachine::Binding} or {RubyIO::Binding} but normally autodiscovered
     # @option options [String] :chroot chroot path.
-    #    All client calls will be made relative to this path (TODO: Not Yet Implemented)
+    #    All client calls will be made relative to this path 
     # @option options [Watcher] :watch the default watcher
     # @option options [String] :scheme the authentication scheme
     # @option options [String] :auth   the authentication credentials
+    # @yieldparam [Client]
     # @return [Client] 
-    def self.connect(addresses,options={})
-        # TODO: take a block and do a bunch of zk things in it before calling close
-        # start a fiber in the EM binding 
+    def self.connect(addresses,options={},&block)
         if options.has_key?(:binding)
             binding_type = options[:binding]
+            #TODO need to add to BINDINGS if not already there
+            #TODO BINDINGS should be a class variable, not a constant
         else
             binding_type = BINDINGS.detect { |b| b.available? }
             raise ProtocolError,"No available binding" unless binding_type
@@ -149,8 +152,28 @@ module ZooKeeper
         binding = binding_type.new()
         session = Session.new(binding,addresses,options)
         client = Client.new(binding)
-        binding.start(session)
-        client
+        binding.start(client,session)
+        
+        return client unless block_given?
+
+        binding_type.context() do |storage|
+            @binding_storage = storage
+            storage.current[CURRENT] ||= []
+            storage.current[CURRENT].push(client)
+            begin
+                block.call(client)
+            ensure
+                storage.current[CURRENT].pop
+                client.close() unless session.closed?
+            end
+        end
+    end
+
+    # within the block supplied to connet this will return the
+    # current ZK client
+    def self.current
+        #We'd use if key? here if strand supported it
+        @binding_storage.current[CURRENT].last if @binding_storage.current[CURRENT]
     end
 
     class WatchEvent
@@ -430,14 +453,10 @@ module ZooKeeper
         private
         def synchronous_call(method,*args)
             op = self.send(method,*args) do |*results|
-                op.results = results
-            end
-
-            op.on_error do |err|
-                op.results = if err.kind_of?(Exception) then err else ZK::Error.lookup(err) end
+                results 
             end
         
-            return op.waitfor()
+            op.value
         end
 
         def queue_request(*args,&blk)

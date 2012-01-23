@@ -1,22 +1,8 @@
-require 'spec_helper'
 require 'recipes/util.rb'
 
-describe "Client utilities" do
-
-        before(:all) do
-            restart_cluster(2)
-            @zk = connect()
-            unless @zk.exists("/zkruby")
-                @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE)
-            end
-            @zk_ch = connect(:chroot => "/zkruby")
-        end
-
-        after(:all) do
-            safe_close(@zk)
-        end
-
-        context "recursive make path" do
+shared_examples_for "util recipes" do
+   context "util recipes" do
+        context "Client#mkpath" do
             #you'll note that these tests rely on each other!
             before(:each) do
                 @zk.rmpath("/zkruby/spec-util")
@@ -43,11 +29,6 @@ describe "Client utilities" do
 
             it "should not raise error if something else creates an intermediate path"
 
-            it "should work with chroot" do
-                @zk_ch.mkpath("/spec-util/test/mkpath")
-                stat,data = @zk_ch.get("/spec-util/test")
-                data.should == ""
-            end
 
         end
 
@@ -72,10 +53,6 @@ describe "Client utilities" do
             
             it "should not raise errors if some nodes are deleted by something else during processing"
             it "should fight to the death if something else is creating subnodes"
-
-            it "should work with chroot" do
-                @zk_ch.rmpath("/spec-util")
-                @zk_ch.exists?("/spec-util").should be_false
-            end
         end
+    end
 end

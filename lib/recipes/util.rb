@@ -1,60 +1,59 @@
 module ZooKeeper
 
-    class UtilErrback
-        attr_accessor :errback, :connection_lost
-        def invoke(err)
-            errback.call(err) if errback
-        end
-    end
-
     class Client
-        
+
         # Recursive make path
         #
-        # Note that this will send parallel creates for ALL nodes up to the root
-        # and then ignores any NODE_EXISTS errors.
-        # You generally only want to call this after receiving a NO_NODE error from a 
+        # This will send parallel creates for ALL nodes up to the root
+        # and then ignore any NODE_EXISTS errors.
+        #
+        # You generally want to call this after receiving a NO_NODE error from a 
         # simple {#create}
         #
-        # @overload mkpath(path,acl)
-        #    @param [String] path
-        #    @param [Data::ACL] acl the access control list to apply to any created nodes
-        #    @return 
-        #    @raise [Error]
-        # @overload mkpath(path,acl)
-        #    @return [AsyncOp]
-        #    @yield  [] callback invoked if path creation is successful
-        def mkpath(path,acl=ZK::ACL_OPEN_UNSAFE,errback=UtilErrback.new(),&blk)
+        # @param [String] path
+        # @param [Data::ACL] acl the access control list to apply to any created nodes
+        # @return 
+        # @raise [Error]
+        def mkpath(path,acl=ZK::ACL_OPEN_UNSAFE,&callback)
+
             return synchronous_call(:mkpath,path,acl) unless block_given?
 
             connection_lost = false
 
             path_comp = path.split("/")
 
+            # we only care about the result of the final create op
+            last_op = nil
+
             (1-path_comp.length..-1).each do |i|
 
                 sub_path = path_comp[0..i].join("/")
-                op = create(sub_path,"",acl) do |path|
-                    blk.call if (i == -1)
-                end
+
+                op = create(sub_path,"",acl) { if i == -1 then callback.call() else :true end }
 
                 op.errback do |err|
                     if i == -1
                         if ZK::Error::NODE_EXISTS === err
-                            blk.call()
+                            callback.call()
                         elsif ZK::Error::CONNECTION_LOST === err || ( ZK::Error::NO_NODE && connection_lost )
-                            mkpath(path,acl,errback,&blk)
+                            # try again
+                            mkpath(path,acl)
+                            callback.call()
                         else 
-                            errback.invoke(err)
+                            raise err 
                         end
                     elsif ZK::Error::CONNECTION_LOST === err
                         connection_lost = true
+                        :connection_lost
+                    else
+                        # we don't care about any other errors, but we will log them
+                        logger.warn { "Error creating #{sub_path}, #{err}" }
                     end
                 end
-            end
+                last_op = op if (i == -1)
+               end
 
-            @binding.async_op(errback)
-
+            return WrappedOp.new(last_op)
         end
 
         # Recursive delete
@@ -76,66 +75,67 @@ module ZooKeeper
         # @overload rmpath(path,version)
         #    @return [AsyncOp]
         #    @yield  [] callback invoked if delete is successful
-        def rmpath(path,version = -1,errback=UtilErrback.new(), &blk)
+        def rmpath(path,version = -1, &callback)
+
             return synchronous_call(:rmpath,path,version) unless block_given?
 
-            delete_proc = Proc.new() do 
+            del_op = delete(path,version) { callback.call() }
 
-                del_op = delete(path,version) { blk.call() }
-
-                del_op.errback do |err|
-                    case err
-                    when ZK::Error::NO_NODE
-                        if version < 0 then  blk.call() else errback.invoke(err) end
-                    when ZK::Error::NOT_EMPTY, ZK::Error::CONNECTION_LOST
-                        #try again
-                        rmpath(path,version,errback,&blk)
-                    else
-                        errback.invoke(err)
-                    end
-                end
-            end
-
-            children_op = children(path) do | stat, child_list |
-
-                if child_list.empty?
-                    delete_proc.call()
-                else
-                    error_found = false
-                    child_list.each do |child|
-                        #note do NOT pass errback in here - we need a new one
-                        #to avoid overwriting the top level error callback
-                        #and to avoid firing it more than once
-                        rm_op = rmpath("#{path}/#{child}",-1) {
-                            child_list.delete(child)
-                            #when all children have been deleted then we delete ourself
-                            delete_proc.call if (child_list.empty?)
-                        }
-
-                        #first error will chain back up and since we don't remove the
-                        #child, any further successful deletions will be ignored
-                        rm_op.errback do |err|
-                            errback.invoke(err) unless error_found
-                            error_found = true
-                        end
-                    end
-                end
-
-            end
-
-            children_op.errback do |err|
+            del_op.errback do |err|
+                # we don't leave this method unless we get an exception
+                # or have completed and called the callback
                 case err
                 when ZK::Error::NO_NODE
-                    #someone beat us to it
-                    if version < 0 then blk.call() else errback.invoke(err) end
                 when ZK::Error::CONNECTION_LOST
-                    #try again
-                    rmpath(path,version,errback,&blk)
+                    rmpath(path,version)
+                when ZK::Error::NOT_EMPTY
+
+                    stat, child_list = children(path)
+
+                    unless child_list.empty?
+                        child_ops = {}
+                        child_list.each do |child| 
+                            child_path = "#{path}/#{child}"
+
+                            rm_op = rmpath(child_path,-1) { :success }
+
+                            rm_op.errback { |err| child_results[child_path] = err }
+
+                            child_ops[child_path] = rm_op
+                        end
+
+                        # Wait until all our children are done (or error'd)
+                        child_ops.each { |child_path,op| op.value }
+                        rmpath(path,version)
+                    end
                 else
-                    errback.invoke(err)
+                    raise err
                 end
+                callback.call()
             end
-            @binding.async_op(errback)
+
+            return WrappedOp.new(del_op)
+        end
+    end #Client
+
+    class WrappedOp < AsyncOp
+        def initialize(delegate_op)
+            @delegate_op = delegate_op
+            @errback = nil
+        end
+
+        private
+        def wait_value()
+            begin  
+                @delegate_op.value()
+            rescue StandardError > err
+                @errback ? @errback.call(err) : raise
+            end
+        end
+
+        def set_error_handler(errback)
+            @errback = errback
         end
     end
-end
+
+end #ZooKeeper

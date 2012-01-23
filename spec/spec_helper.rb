@@ -1,14 +1,14 @@
 
 require 'slf4r/logging_logger'
 require 'zkruby'
-require 'zk/rubyio'
 
 Logging.logger.root.level = :error
 Logging.logger.root.appenders = Logging.appenders.stdout(:layout => Logging.layouts.pattern(:pattern => '%c [%T] %-5l: %m\n'))
-Logging.logger[ZooKeeper::RubyIO::Connection].level = :error
-Logging.logger[ZooKeeper::RubyIO::Binding].level = :error
-Logging.logger[ZooKeeper::Session].level = :error
-Logging.logger["ZooKeeper::Session::Ping"].level = :error
+#Logging.logger[ZooKeeper::RubyIO::Connection].level = :error
+#Logging.logger[ZooKeeper::RubyIO::Binding].level = :error
+#Logging.logger[ZooKeeper::Session].level = :debug
+#Logging.logger["ZooKeeper::EventMachine::ClientConn"].level = :debug
+#Logging.logger["ZooKeeper::Session::Ping"].level = :error
 
 Thread.current[:name] = "Rspec::Main"
 module ZooKeeperSpecHelper
@@ -24,7 +24,10 @@ module ZooKeeperSpecHelper
         else
             system("../../bin/zkServer.sh start >> zk.out")
         end
+    end
 
+    def get_addresses()
+        "localhost:2181"
     end
 
     def safe_close(zk)

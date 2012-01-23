@@ -1,4 +1,4 @@
-require 'shared/client_binding'
+require 'shared/binding'
 require 'zk/rubyio'
 
 describe ZooKeeper::RubyIO::Binding do
