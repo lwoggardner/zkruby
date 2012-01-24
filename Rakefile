@@ -20,6 +20,7 @@ Hoe.spec 'zkruby' do
   self.readme_file="README.rdoc"
   developer('Grant Gardner', 'grant@lastweekend.com.au')
   extra_deps << [ 'slf4r' , '>= 0.4.2' ]
+  extra_deps << [ 'strand', '>= 0.1.0' ]
 
   self.jute_modules = {
       "org.apache.zookeeper.data" => "ZooKeeper::Data",
