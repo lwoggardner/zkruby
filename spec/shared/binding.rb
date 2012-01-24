@@ -2,6 +2,7 @@ require 'spec_helper'
 require 'shared/basic'
 require 'shared/util'
 require 'shared/chroot'
+require 'shared/watch'
 
 shared_examples_for "a zookeeper client binding" do
 
@@ -27,5 +28,6 @@ shared_examples_for "a zookeeper client binding" do
     end
 
     include_examples("chrooted connection")
+    include_examples("watches")
 end
 
