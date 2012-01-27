@@ -45,18 +45,32 @@ shared_examples_for "basic integration" do
 
     context "exceptions" do
 
-        it "should raise error for synchronous method" do
-            lambda { @zk.get("/anunknownpath") }.should raise_error(ZooKeeper::Error::NO_NODE)
-        end
-
-        it "should capture exceptions from asynchronous callback" do
-            op = @zk.exists?("/zkruby") do |stat|
-                raise "oops"
+        it "should raise ZK::Error for synchronous method" do
+            begin
+                get_caller = caller
+                @zk.get("/anunknownpath")
+                fail "Expected no node error"
+            rescue ZooKeeper::Error => ex
+                # only because JRuby 1.9 doesn't support the === syntax for exceptions
+                ZooKeeper::Error::NO_NODE.should === ex
+                ex.message.should =~ /\/anunknownpath/
+                ex.backtrace[1..-1].should == get_caller
             end
-
-            lambda { op.value }.should raise_error(RuntimeError)
         end
 
+        it "should capture ZK error for asynchronous method" do
+            get_caller = caller
+            op = @zk.get("/an/unknown/path") { raise "callback invoked unexpectedly" }
+           
+            begin
+                op.value
+                fail "Expected no node error"
+            rescue ZooKeeper::Error => ex
+                ZooKeeper::Error::NO_NODE.should === ex
+                ex.message.should =~ /\/an\/unknown\/path/
+                ex.backtrace[1..-1].should == get_caller
+            end
+        end
 
         it "should call the error call back for asynchronous errors" do
             op = @zk.get("/an/unknown/path") do
@@ -64,7 +78,6 @@ shared_examples_for "basic integration" do
             end
 
             op.on_error do |err|
-                puts "In error callback"
                 case err
                 when ZK::Error::NO_NODE
                     :found_no_node_error
@@ -75,6 +88,21 @@ shared_examples_for "basic integration" do
 
             op.value.should == :found_no_node_error
         end
+
+        it "should capture exceptions from asynchronous callback" do
+            async_caller = nil
+            op = @zk.exists?("/zkruby") do |stat|
+                raise "oops"
+            end
+
+            begin
+                op.value
+                fail "Expected RuntimeError"
+            rescue RuntimeError => ex
+                ex.message.should =~ /oops/
+            end
+        end
+
     end
 
     context "anti herd-effect features" do

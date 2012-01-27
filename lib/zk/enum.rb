@@ -34,7 +34,7 @@ module Enumeration
   end
 
   def to_s
-    "#{super}(:#{@name} [#{@index}])"
+    "#{super} (:#{@name} [#{@index}])"
   end
 
   def enum_exception(*args)

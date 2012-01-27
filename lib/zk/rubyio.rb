@@ -252,6 +252,7 @@ module ZooKeeper::RubyIO
     class AsyncOp < ::ZooKeeper::AsyncOp
 
         def initialize(binding,&callback)
+            super
             @mutex = Monitor.new
             @cv = @mutex.new_cond()
             @callback = callback

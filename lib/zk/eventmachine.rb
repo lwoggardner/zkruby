@@ -124,7 +124,6 @@ module ZooKeeper
 
             def queue_request(*args,&callback)
                 op = AsyncOp.new(self,&callback)
-
                 begin
                     @session.queue_request(*args) do |error,response|
                         op.resume(error,response)
@@ -156,6 +155,7 @@ module ZooKeeper
         class AsyncOp < ZooKeeper::AsyncOp
 
             def initialize(binding,&callback)
+                super()
                 @em_binding = binding
 
                 # Wrap the callback in its own Strand

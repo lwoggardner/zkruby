@@ -169,7 +169,7 @@ module ZooKeeper
         end
     end
 
-    # within the block supplied to connet this will return the
+    # within the block supplied to {#connect} this will return the
     # current ZK client
     def self.current
         #We'd use if key? here if strand supported it
@@ -229,6 +229,7 @@ module ZooKeeper
     # or with state :expired and event :none when the session is finalised 
     class Client
 
+        # :nodoc 
         # Don't call this directly
         # @see ZooKeeper.connect
         def initialize(binding)
@@ -455,12 +456,15 @@ module ZooKeeper
             op = self.send(method,*args) do |*results|
                 results 
             end
-        
+            op.backtrace = op.backtrace[2..-1] if op.backtrace
+            
             op.value
         end
 
         def queue_request(*args,&blk)
-            @binding.queue_request(*args,&blk)
+            op = @binding.queue_request(*args,&blk)
+            op.backtrace = caller[1..-1]
+            op
         end
 
         def chroot(path)

@@ -82,7 +82,11 @@ module ZooKeeper
         end
 
         def result(rc)
-            error = if (Error::NONE === rc) then nil else Error.lookup(rc) end
+            error = nil
+            unless (Error::NONE === rc) then 
+                error = Error.lookup(rc) 
+                error = error.exception("ZooKeeper error for #{@op}(#{path}) ")
+            end
             [ callback, error ,response, watch_type ] 
         end
     end
@@ -126,6 +130,8 @@ module ZooKeeper
     #
     class AsyncOp
 
+        attr_accessor :backtrace
+
         # Provide an error callback. 
         # @param block the error callback as a block
         # @yieldparam [StandardError] the error raised by the zookeeper operation OR by its callback
@@ -147,6 +153,10 @@ module ZooKeeper
         #    the error handler raises StandardError
         def value();
             wait_value()
+            rescue ZooKeeper::Error => ex
+               # Set the backtrace to the original caller, rather than the ZK event loop
+               ex.set_backtrace(@backtrace) if @backtrace
+               raise ex
         end
 
         private
