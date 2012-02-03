@@ -3,6 +3,7 @@ require 'shared/basic'
 require 'shared/util'
 require 'shared/chroot'
 require 'shared/watch'
+require 'shared/multi'
 
 shared_examples_for "a zookeeper client binding" do
 
@@ -24,6 +25,7 @@ shared_examples_for "a zookeeper client binding" do
 
         include_examples("basic integration")
         include_examples("util recipes")
+        include_examples("multi")
 
     end
 

@@ -5,6 +5,7 @@ require 'zk/enum'
 require 'zk/protocol'
 require 'zk/session'
 require 'jute/zookeeper'
+require 'zk/multi'
 
 # A pure ruby implementation of the zk client library
 #
@@ -68,7 +69,7 @@ module ZooKeeper
         enum :all, READ | WRITE | CREATE | DELETE | ADMIN
     end
 
-    
+
     # Combine permissions constants
     # @param [Perms] perms... list of permissions to combine, can be {Perms} constants, symbols or ints 
     # @return [Fixnum] integer representing the combined permission
@@ -95,7 +96,7 @@ module ZooKeeper
     def self.acl(id,*perms)
         Data::ACL.new( :identity => id, :perms => self.perms(*perms) )
     end
-    
+
     #  
     # The Anyone ID
     ANYONE_ID_UNSAFE = Data::Identity.new(:scheme => "world", :identity => "anyone")
@@ -153,7 +154,7 @@ module ZooKeeper
         session = Session.new(binding,addresses,options)
         client = Client.new(binding)
         binding.start(client,session)
-        
+
         return client unless block_given?
 
         binding_type.context() do |storage|
@@ -209,6 +210,59 @@ module ZooKeeper
         def process_watch(state,path,event)
         end
     end
+    
+    #@private
+    module Operations
+        CREATE_OPTS = { :sequential => 2, :ephemeral => 1 }
+
+        private
+        def op_create(path,data,acl,*modeopts,&callback)
+            return synchronous_call(:op_create,path,data,acl,*modeopts)[0] unless block_given?
+            flags = modeopts.inject(0) { |flags,opt|
+                raise ArgumentError, "Unknown create option #{ opt }" unless CREATE_OPTS.has_key?(opt)
+                flags | CREATE_OPTS[opt]
+            }
+            path = session.chroot(path) 
+
+            req = Proto::CreateRequest.new(:path => path, :data => data, :acl => acl, :flags => flags)
+            queue_request(req,:create,1,Proto::CreateResponse) do | response |
+                callback.call(session.unchroot(response.path)) if callback
+            end
+
+        end
+
+        def op_set(path,data,version,&callback)
+            return synchronous_call(:op_set,path,data,version)[0] unless block_given?
+            path = session.chroot(path) 
+
+            req = Proto::SetDataRequest.new(:path => path, :data => data, :version => version)
+            queue_request(req,:set_data,5,Proto::SetDataResponse) do | response |
+                callback.call( response.stat ) if callback
+            end
+
+        end
+
+        def op_delete(path,version,&callback)
+            return synchronous_call(:op_delete,path,version) unless block_given?
+            path = session.chroot(path) 
+
+            req = Proto::DeleteRequest.new(:path => path, :version => version)
+            queue_request(req,:delete,2) do |response|
+                callback.call() if callback
+            end
+
+        end
+
+        def op_check(path,version,&callback)
+            return synchronous_call(:op_check,path,version) unless block_given?
+            path = session.chroot(path)
+            req = Proto::CheckVersionRequest.new(:path => path, :version => version)
+            queue_request(req,:check,13) do |response|
+                callback.call() if callback
+            end
+        end
+
+    end
 
     # Client API
     # 
@@ -229,9 +283,9 @@ module ZooKeeper
     # or with state :expired and event :none when the session is finalised 
     class Client
 
-        # :nodoc 
-        # Don't call this directly
-        # @see ZooKeeper.connect
+        include Operations
+        # @api private
+        # See {::ZooKeeper.connect}
         def initialize(binding)
             @binding = binding
         end
@@ -274,7 +328,6 @@ module ZooKeeper
             end
         end
 
-        CREATE_OPTS = { :sequential => 2, :ephemeral => 1 }
         # Create a node
         # @overload create(path,data,acl,*modeopts)
         #   Synchronous style
@@ -287,20 +340,8 @@ module ZooKeeper
         # @overload create(path,data,acl,*modeopts)
         #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [String] path the created path
-        def create(path,data,acl,*modeopts,&blk)
-            return synchronous_call(:create,path,data,acl,*modeopts)[0] unless block_given?
-
-            flags = modeopts.inject(0) { |flags,opt|
-                raise ArgumentError, "Unknown create option #{ opt }" unless CREATE_OPTS.has_key?(opt)
-                flags | CREATE_OPTS[opt]
-            }
-            path = chroot(path) 
-
-            req = Proto::CreateRequest.new(:path => path, :data => data, :acl => acl, :flags => flags)
-
-            queue_request(req,:create,1,Proto::CreateResponse) do | response |
-                blk.call(unchroot(response.path))
-            end
+        def create(path,data,acl,*modeopts,&callback)
+            op_create(path,data,acl,*modeopts,&callback)
         end
 
         # Retrieve data
@@ -354,14 +395,8 @@ module ZooKeeper
         # @overload delete(path,version)
         #    @return [AsyncOp]
         #    @yield  [] callback invoked if delete is successful
-        def delete(path,version,&blk)
-            return synchronous_call(:delete,path,version) unless block_given?
-            path = chroot(path) 
-
-            req = Proto::DeleteRequest.new(:path => path, :version => version)
-            queue_request(req,:delete,2) do |response|
-                blk.call()
-            end
+        def delete(path,version,&callback)
+            op_delete(path,version,&callback)
         end
 
         # Set Data
@@ -374,14 +409,8 @@ module ZooKeeper
         # @overload set(path,data,version)
         #    @return [AsyncOp] asynchronous operation
         #    @yieldparam [Data::Stat] stat new stat of path
-        def set(path,data,version,&blk)
-            return synchronous_call(:set,path,data,version)[0] unless block_given?
-            path = chroot(path) 
-
-            req = Proto::SetDataRequest.new(:path => path, :data => data, :version => version)
-            queue_request(req,:set_data,5,Proto::SetDataResponse) do | response |
-                blk.call( response.stat )
-            end
+        def set(path,data,version,&callback)
+            op_set(path,data,version,&callback)
         end
 
         # Get ACl
@@ -451,13 +480,65 @@ module ZooKeeper
             @binding.close(&blk)
         end
 
+        # @api private
+        # See {#transaction} 
+        def multi(ops,&callback)
+            return synchronous_call(:multi,ops) unless block_given?
+
+            req = Proto::MultiRequest.new()
+
+            ops.each do |op|
+                req.requests << { :header => { :_type => op.opcode, :done => false, :err=> 0 }, :request => op.request }
+            end
+
+            req.requests << { :header => { :_type => -1 , :done => true, :err => -1 } }
+
+            logger.debug("Multi #{req}")
+            queue_request(req,:multi,14,Proto::MultiResponse) do |response|
+                exception = nil  
+                response.responses.each_with_index() do |multi_response,index|
+                    next if multi_response.done?
+                    op = ops[index]
+                    if multi_response.header._type == -1
+                        errcode = multi_response.header.err.to_i
+                        if (errcode != 0)
+                            exception = Error.lookup(errcode).exception("Transaction error for op ##{index} - #{op.op} (#{op.path})")
+                            #TODO just raises the first exception
+                            raise exception
+                        end
+                    else
+                        callback_args = if multi_response.has_response? then [ multi_response.response ] else [] end
+                        ops[index].callback.call(*callback_args)
+                    end
+                end
+            end
+        end
+
+        # Perform multiple operations in a transaction
+        # @overload transaction()
+        #   @return [Transaction]
+        # @overload transaction(&block)
+        #  Execute the supplied block and commit the transaction (synchronously)
+        #  @yieldparam [Transaction] txn
+        def transaction(&block)
+            txn = Transaction.new(self,session)
+            return txn unless block_given?
+
+            yield txn
+            txn.commit
+        end
         private
+
+        def session
+            @binding.session
+        end
+
         def synchronous_call(method,*args)
             op = self.send(method,*args) do |*results|
                 results 
             end
             op.backtrace = op.backtrace[2..-1] if op.backtrace
-            
+
             op.value
         end
 
@@ -468,13 +549,89 @@ module ZooKeeper
         end
 
         def chroot(path)
-            @binding.session.chroot(path)
+            session.chroot(path)
         end
 
         def unchroot(path)
-            @binding.session.unchroot(path)
+            session.unchroot(path)
+        end
+
+    end
+
+    # Collects zookeeper operations to execute as a single transaction
+    #
+    # The builder methods {#create} {#delete} {#check} {#set} all take
+    # an optional callback block that will be executed if the {#commit} succeeds.
+    # 
+    # If the transaction fails none of these callbacks will be executed.
+    class Transaction
+        include Operations
+        #:nodoc
+        def initialize(client,session)
+            @client = client
+            @session = session
+            @ops = []
+        end
+
+
+        # Create a node
+        #   @param [String] path the base name of the path to create
+        #   @param [String] data the content to store at path
+        #   @param [Data::ACL] acl the access control list to apply to the new node
+        #   @param [Symbol,...] modeopts combination of :sequential, :emphemeral
+        #   @yieldparam [String] path the created path
+        def create(path,data,acl,*modeopts,&callback)
+            op_create(path,data,acl,*modeopts,&callback)
+        end
+        
+        # Delete path
+        #    @param [String] path
+        #    @param [FixNum] version the expected version to be deleted (-1 to match any version)
+        #    @yield  [] callback invoked if delete is successful
+        def delete(path,version,&callback)
+            op_delete(path,version,&callback)
+        end
+
+        # Set Data
+        #    @param [String] path
+        #    @param [String] data content to set at path
+        #    @param [Fixnum] version expected current version at path or -1 for any version
+        #    @yieldparam [Data::Stat] stat new stat of path
+        def set(path,data,version,&callback)
+            op_set(path,data,version,&callback)
+        end
+
+        # Check Version
+        def check(path,version,&callback)
+            op_check(path,version,&callback)
+        end
+
+        # Commit the transaction
+        # @overload commit()
+        #   Synchronously commit the transaction
+        #   @raise [Error] if the transaction failed
+        # @overload commit(&callback)
+        #   @return [AsyncOp] captures the result of the asynchronous operation
+        #   @yield [] callback invoked if transaction is successful
+        def commit(&callback)
+            op = client.multi(ops,&callback)
+        end
+
+        private
+        attr_reader :client, :session, :ops
+        
+        def queue_request(request,op,opcode,response=nil,&callback)
+            ops << Operation.new(op,opcode,request,response,callback)
+        end
+
+        #Just ensure we have an empty block
+        def synchronous_call(method,*args)
+            self.send(method,*args) { |*results| results  }
         end
     end
+
+
+
 end
 
 # Shorthand

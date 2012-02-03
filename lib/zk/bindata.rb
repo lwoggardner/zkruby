@@ -20,9 +20,23 @@ class ZKString < BinData::Primitive
   end
 end
 
-class ZKBoolean < BinData::Primitive
-   int8 :boolvalue
+#This doesn't work as expected, because when used in a record
+# you get a ZKBoolean instance back which cannot be compared to "false"
+# you must call snapshot or compare with == false
+class ZKBoolean < BinData::BasePrimitive
 
-   def get; self.boolvalue != 0; end
-   def set(v) self.boolvalue = (v ? 1 : 0 ); end
+   def value_to_binary_string(v)
+       intval = v ? 1 : 0
+       [ intval ].pack("C")
+   end
+
+   def read_and_return_value(io)
+       intval = io.readbytes(1).unpack("C").at(0)
+       intval != 0
+   end
+
+   def sensible_default
+      false
+   end
+
 end

@@ -389,18 +389,18 @@ module ZooKeeper
 
         def invoke_response(callback,error,response,packet_io = nil)
             if callback
-                logger.debug { "Invoking response cb=#{callback} err=#{error} resp=#{response}"  }
                 
                 result = if error
                              nil
                        elsif response.respond_to?(:read) && packet_io
-                            response.read(packet_io)
+                           response.read(packet_io)
                        elsif response
                            response
                        else
                            nil
                        end
 
+                logger.debug { "Invoking response cb=#{callback} err=#{error} resp=#{result}"  }
                 binding.invoke(callback,error,result)
             end
         end

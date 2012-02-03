@@ -61,19 +61,28 @@ module ZooKeeper
         end
      end
 
-    class Packet
-        attr_reader :xid,:op,:opcode,:request,:response, :watch_type, :watcher, :callback
-       
-        def initialize(xid,op,opcode,request,response,watch_type,watcher,callback)
-            @xid=xid;@op=op;@opcode=opcode
+    class Operation
+        attr_reader :op, :opcode, :request, :response, :callback
+        def initialize(op,opcode,request,response,callback)
+            @op=op;@opcode=opcode
             @request=request;@response=response
-            @watch_type = watch_type; @watcher = watcher
             @callback=callback
         end
-
+        
         def path
             #Every request has a path!
-            request.path
+            #TODO - path may be chrooted!
+            request.path if request.respond_to?(:path)
+        end
+    end
+
+    class Packet < Operation
+        attr_reader :xid, :watch_type, :watcher
+       
+        def initialize(xid,op,opcode,request,response,watch_type,watcher,callback)
+            super(op,opcode,request,response,callback)
+            @xid=xid;
+            @watch_type = watch_type; @watcher = watcher
         end
 
         

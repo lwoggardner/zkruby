@@ -244,7 +244,6 @@ module ZooKeeper::RubyIO
 
         def invoke(*args)
             @event_queue.push(args)
-            logger.debug { "Pushed #{args[0]} (#{@event_queue.length})" }
         end
 
     end #Binding
