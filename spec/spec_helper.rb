@@ -44,3 +44,13 @@ end
 
 include ZooKeeperSpecHelper
 
+restart_cluster()
+sleep(2)
+require 'net/telnet'
+t = Net::Telnet.new("Host" => "localhost", "Port" => 2181)
+properties = t.cmd("mntr")
+
+RSpec.configure do |c|
+    #Exclude multi unless we are on a 3.4 server
+    c.filter_run_excluding :multi => true unless properties
+end
