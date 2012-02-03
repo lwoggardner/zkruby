@@ -66,7 +66,7 @@ Disadvantages:
                puts "#{stat.inspect} #{data}" 
             end
             
-        rescue ZooKeeperError => zkex
+        rescue ZooKeeper::Error => zkex
             puts zkex.message
         end
 
@@ -85,8 +85,11 @@ Disadvantages:
 
 == DEVELOPERS:
 
-After checking out the source, run:
+Checkout the zookeeper source from http://zookeeper.apache.org
 
+Checkout the zkruby source into the contrib directory  
+
+Run
   $ rake newb
 
 This task will install any missing dependencies, run the tests/specs,
