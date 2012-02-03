@@ -14,7 +14,6 @@ lib/zk/protocol.rb
 lib/zk/rubyio.rb
 lib/zk/session.rb
 lib/zkruby.rb
-spec/auth_spec.rb
 spec/bindata_spec.rb
 spec/enum_spec.rb
 spec/eventmachine_spec.rb
@@ -23,6 +22,7 @@ spec/protocol_spec.rb
 spec/recipe_helper.rb
 spec/rubyio_spec.rb
 spec/sequences_spec.rb
+spec/shared/auth.rb
 spec/shared/basic.rb
 spec/shared/binding.rb
 spec/shared/chroot.rb
