@@ -16,7 +16,7 @@ module ZooKeeper
 
 
     # Use the ZooKeeper version and last digit for us
-    VERSION = "3.4.2.0"
+    VERSION = "3.4.2.1"
 
     BINDINGS = []
 
