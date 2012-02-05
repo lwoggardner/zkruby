@@ -54,7 +54,8 @@ shared_examples_for "basic integration" do
                 # only because JRuby 1.9 doesn't support the === syntax for exceptions
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/anunknownpath/
-                ex.backtrace[1..-1].should == get_caller
+                skip = if defined?(JRUBY_VERSION) then 2 else 1 end
+                ex.backtrace[skip..-1].should == get_caller
             end
         end
 

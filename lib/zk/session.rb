@@ -128,7 +128,7 @@ module ZooKeeper
             raise ProtocolError, "Already started!" unless @keeper_state.nil?
             @keeper_state = :disconnected
             @disconnect_time = Time.now
-            logger.debug ("Starting new zookeeper client session")
+            logger.debug("Starting new zookeeper client session")
             reconnect()
         end
 
@@ -354,7 +354,7 @@ module ZooKeeper
             end
 
             if watches.empty?
-                logger.warn ( "Received notification for unregistered watch #{state} #{path} #{event}" )
+                logger.warn { "Received notification for unregistered watch #{state} #{path} #{event}" }
             end
             watches.each { | watch | invoke_watch(watch,keeper_state,path,watch_event) }      
 

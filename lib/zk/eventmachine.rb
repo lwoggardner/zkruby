@@ -1,5 +1,4 @@
 require 'eventmachine'
-require 'strand'
 
 if defined?(JRUBY_VERSION) && JRUBY_VERSION == "1.6.5"
     require 'jruby'
@@ -16,6 +15,8 @@ if defined?(JRUBY_VERSION) && JRUBY_VERSION == "1.6.5"
 else
     require 'fiber'
 end
+
+require 'strand'
 
 
 module ZooKeeper

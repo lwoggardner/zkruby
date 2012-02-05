@@ -30,22 +30,33 @@ describe Enumeration do
         m.test(TestEnum::TWO)
     end
 
-    context "errors" do
-        #HMM the === syntax for rescue is valid for MRI 1.9.2 but not yet supported in JRuby
-        it "should be raisable with get" do
+    describe "errors" do
+        # Ruby 1.9 inadvertently dropped requirement that the argument
+        # to rescue must be a class or module, but despite its usefulness
+        # it is not supposed to be that way and JRuby doesn't work that way
+        it "should be an exception class" do
+            TestError.get(:badone).should equal (TestError::BADONE)
+            TestError.get(:badone).class.should == Class
+            TestError::BADONE.should < StandardError
+            TestError::BADONE.new().should be_kind_of(TestError)
+            TestError::OOPS.should === TestError.get(:oops).exception()
+            TestError::OOPS.to_sym.should == :oops
+        end
+
+        it "should be raisable with get and rescuable by a constant" do
             begin
                 raise TestError.get(:badone), "mymessage"
             rescue TestError::BADONE => ex
-
-                # do nothing
+                ex.message.should == "mymessage"
             end
         end
 
-        it "should be raisable with constant" do
+        it "should be raisable with constant and rescuable with fetch" do
             begin
-                raise TestError::OOPS
+                raise TestError::OOPS, "a message"
             rescue TestError::fetch(20) => ex
                 # do nothing
+                ex.message.should == "a message"
             end
         end
 
@@ -56,11 +67,17 @@ describe Enumeration do
             end
         end
 
-        it "should be raisable with unknown" do
+        it "should be raisable with unknown symbol" do
             begin
                 raise TestError.lookup(:unknown)
             rescue TestError => err
-                err.to_sym.should == :unknown
+            end
+        end
+
+        it "should be raisable with unknown int" do
+            begin
+                raise TestError.lookup(-132)
+            rescue TestError => err
             end
         end
     end
