@@ -40,12 +40,12 @@ grammar Jute
     end
 
     rule jfield
-        (type name:identifier space* ';' space*)  {
-            [ name.value, type.value ] 
+        (ftype name:identifier space* ';' space*)  {
+            [ name.value, ftype.value ] 
         }
     end
     
-    rule type
+    rule ftype
       (parameterized_type | non_parameterized_type)
     end
 
