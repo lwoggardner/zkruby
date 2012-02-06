@@ -23,20 +23,16 @@ Disadvantages:
 * Probably not as optimised in terms of performance (but your client code is ruby anyway) 
 * Not production tested (yet- do you want to be the first?)  
 
-
 == SYNOPSIS:
 
 0. Configure Slf4R Logging (https://rubygems.org/gems/slf4r)
-1. Require a zkruby binding
-2. Get a connection {ZooKeeper.connect}
-3. Make requests on the returned {ZooKeeper::Client}
+1. Get a connection {ZooKeeper.connect}
+2. Make requests on the returned {ZooKeeper::Client}
 
   require 'slf4r/ruby_logging' 
   require 'zkruby'
 
-  # Using ruby threads and sockets
-  require 'zk/rubyio'
-    
+  # Using ruby threads and sockets (default)
   zk = ZooKeeper.connect("localhost:2181")
   # Synchronous
   stat = zk.exists("/aPath")
@@ -50,12 +46,10 @@ Disadvantages:
   stat,data = zk.get("/aPath",watch)
 
   # OR with EventMachine
-  require 'eventmachine'
-  require 'zk/eventmachine'
-
+  require 'em_zkruby'
   EventMachine.run do
-     # Magic of Fibers lets us code synchronous while really executing asynchronous
-     f = Fiber.new() do
+     # Magic of Fibers (via Strands) lets us code normally and execute asynchronously
+     Strand.new() do
         begin
             zk = ZooKeeper.connect("localhost:2181")
             #Sync
@@ -69,9 +63,7 @@ Disadvantages:
         rescue ZooKeeper::Error => zkex
             puts zkex.message
         end
-
      end
-     f.resume()
   end
 
 == REQUIREMENTS:
@@ -81,7 +73,7 @@ Disadvantages:
 
 == INSTALL:
 
-* FIX (sudo gem install, anything else)
+  $ (sudo) gem install zkruby
 
 == DEVELOPERS:
 
@@ -89,11 +81,17 @@ Checkout the zookeeper source from http://zookeeper.apache.org
 
 Checkout the zkruby source into the contrib directory  
 
-Run
-  $ rake newb
+Install hoe
 
-This task will install any missing dependencies, run the tests/specs,
-and generate the RDoc.
+  $ (sudo) gem install hoe 
+
+Install other dependencies
+
+  $ rake check_extra_deps
+
+Generate docs and run the tests/specs
+
+  $ rake newb
 
 == LICENSE:
 

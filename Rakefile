@@ -4,7 +4,13 @@ $LOAD_PATH.unshift File.dirname(__FILE__) + '/jute/lib'
 
 require 'rubygems'
 require 'hoe'
-require './yard_ext/enum_handler'
+
+begin
+    require './yard_ext/enum_handler'
+rescue LoadError => err
+     warn "%p while trying to load yard extensions: %s" % [ err.class, err.message ]
+end
+    
 
 
 # Hoe.plugin :compiler
@@ -19,8 +25,12 @@ Hoe.plugin :jute
 Hoe.spec 'zkruby' do
   self.readme_file="README.rdoc"
   developer('Grant Gardner', 'grant@lastweekend.com.au')
-  extra_deps << [ 'slf4r' , '>= 0.4.2' ]
-  extra_deps << [ 'strand', '>= 0.1.0' ]
+  dependency 'slf4r' , '~> 0.4.2' 
+  dependency 'eventmachine', '~> 0.12.10', :development 
+  dependency 'strand', '~> 0.1.0', :development 
+  dependency 'logging', '>= 1.4.1', :development
+  dependency 'rspec', '>=2.7.0', :development
+  dependency 'hoe-yard', '>=0.1.2', :development
 
   self.jute_modules = {
       "org.apache.zookeeper.data" => "ZooKeeper::Data",

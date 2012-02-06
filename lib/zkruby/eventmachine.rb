@@ -1,23 +1,10 @@
 require 'eventmachine'
 
-if defined?(JRUBY_VERSION) && JRUBY_VERSION == "1.6.5"
-    require 'jruby'
-    org.jruby.ext.fiber.FiberExtLibrary.new.load(JRuby.runtime, false)
-    class org::jruby::ext::fiber::ThreadFiber
-        field_accessor :state
-    end
-
-    class Fiber
-        def alive?
-            JRuby.reference(self).state != org.jruby.ext.fiber.ThreadFiberState::FINISHED
-        end
-    end
-else
-    require 'fiber'
+if defined?(JRUBY_VERSION) && JRUBY_VERSION =~ /1\.6\.5.*/
+    raise "Fibers are broken in JRuby 1.6.5 (See JRUBY-6170)"
 end
 
 require 'strand'
-
 
 module ZooKeeper
     module EventMachine
@@ -156,7 +143,6 @@ module ZooKeeper
         class AsyncOp < ZooKeeper::AsyncOp
 
             def initialize(binding,&callback)
-                super()
                 @em_binding = binding
 
                 # Wrap the callback in its own Strand
@@ -197,4 +183,4 @@ module ZooKeeper
     end #module EventMachine
 end #module ZooKeeper
 
-ZooKeeper::BINDINGS << ZooKeeper::EventMachine::Binding
+ZooKeeper.add_binding(ZooKeeper::EventMachine::Binding)

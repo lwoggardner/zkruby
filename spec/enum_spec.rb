@@ -1,4 +1,4 @@
-require 'zk/enum.rb'
+require 'zkruby/enum.rb'
 
 class TestEnum
     include Enumeration

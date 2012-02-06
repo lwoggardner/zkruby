@@ -1,5 +1,3 @@
-require 'recipes/util.rb'
-
 shared_examples_for "util recipes" do
    context "util recipes" do
         context "Client#mkpath" do

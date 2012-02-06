@@ -1,5 +1,3 @@
-
-
 shared_examples_for "basic integration" do
 
     before(:each) do

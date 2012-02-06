@@ -1,6 +1,3 @@
-
-require 'spec_helper'
-
 shared_examples_for "watches" do
     describe "watches" do
         around(:each) do |example|

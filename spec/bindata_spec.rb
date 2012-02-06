@@ -1,11 +1,11 @@
-require 'zk/bindata'
+require 'spec_helper'
 
 class ZKBTest < BinData::Record
     int8 :testint
     zk_boolean :bool
 end
 
-describe ZKBoolean do
+describe ZK::ZKBoolean do
 
     it "should behave like 'false' after reading 00" do
         hex = "0000"

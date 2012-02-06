@@ -1,4 +1,3 @@
-
 shared_examples_for "multi"  do
 
     context "only in 3.4 and up", :multi => true do

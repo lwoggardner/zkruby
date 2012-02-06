@@ -251,7 +251,6 @@ module ZooKeeper::RubyIO
     class AsyncOp < ::ZooKeeper::AsyncOp
 
         def initialize(binding,&callback)
-            super
             @mutex = Monitor.new
             @cv = @mutex.new_cond()
             @callback = callback
@@ -308,4 +307,4 @@ module ZooKeeper::RubyIO
 
 end #ZooKeeper::RubyIO
 # Add our binding
-ZooKeeper::BINDINGS << ZooKeeper::RubyIO::Binding
+ZooKeeper.add_binding(ZooKeeper::RubyIO::Binding)

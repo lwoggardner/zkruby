@@ -1,6 +1,3 @@
-require 'spec_helper'
-
-
 shared_examples_for "chrooted connection" do
     describe "chrooted connection" do
 

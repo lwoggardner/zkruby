@@ -1,5 +1,6 @@
+require 'server_helper'
 require 'shared/binding'
-require 'zk/eventmachine'
+require 'zkruby/eventmachine'
 
 module EMHelper
     alias :restart_cluster_orig :restart_cluster
@@ -34,13 +35,13 @@ describe ZooKeeper::EventMachine::Binding do
 
     around(:each) do |example|
         EventMachine.run {
-            Fiber.new() do
+            Strand.new() do
                begin
                 example.run
                ensure
                 EM::stop
                end
-            end.resume
+            end
         }
     end
 

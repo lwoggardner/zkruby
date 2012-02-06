@@ -1,5 +1,4 @@
 # coding: utf-8
-require 'jute'
 
 module Hoe::Jute
    attr_accessor :jute
@@ -15,6 +14,10 @@ module Hoe::Jute
    end
 
    def define_jute_tasks
+
+      found = try_load_jute()
+
+      if found
          jute_compiler = ::Jute::Compiler.new()
          jute_files   = self.spec.files.find_all { |f| f =~ /\.jute$/ }
 
@@ -38,9 +41,16 @@ module Hoe::Jute
 
           jute_tasks.each do |t|
             task t => [:jute]
-          end 
+          end
+       end
    end
 
+   def try_load_jute()
+        require 'jute'
+   rescue LoadError => err
+        warn "%p while trying to load jute: %s" % [ err.class, err.message ]
+        false
+   end
 end
 
 
