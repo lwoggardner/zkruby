@@ -1,7 +1,7 @@
 # A pure ruby implementation of the zk client library
 #
 # It implements the client side of the ZooKeeper TCP protocol directly rather
-#   than calling the zk client libraries
+# than calling the zk client libraries
 #
 module ZooKeeper
     # Major/Minor numbers track zookeeper itself, final digit is our build number
