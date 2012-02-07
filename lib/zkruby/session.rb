@@ -48,6 +48,7 @@ module ZooKeeper
         end
 
         def chroot(path)
+            return @chroot if path == "/"
             return @chroot + path
         end
 

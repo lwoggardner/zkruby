@@ -57,5 +57,35 @@ shared_examples_for "chrooted connection" do
             end
 
         end
+
+        context "multi", :multi => true do
+
+            it "should do chrooted operations in a transaction" do
+                new_path = nil
+
+                # we're gonna delete this one
+                delete_path = @zk.create("/zkruby/multi","hello multi",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
+                
+                # we use the version in the check command below
+                stat, data = @zk.get("/zkruby")
+                @ch_zk.transaction() do |txn|
+                    txn.create("/multi","chroot world", ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential) { |path| logger.debug{ "New path #{path}"} ; new_path = path }
+                    txn.check("/",stat.version)
+                    txn.set("/","chroot multi data",-1)
+                    txn.delete(delete_path[7..-1],-1)
+                end
+                new_path.should_not be_nil
+
+                stat, data = @zk.get("/zkruby#{new_path}")
+                data.should == "chroot world"
+
+                stat, data = @zk.get("/zkruby")
+                data.should == "chroot multi data"
+
+                @zk.exists?(delete_path).should be_nil
+
+            end
+
+        end
     end
 end

@@ -1,7 +1,7 @@
 shared_examples_for "multi"  do
 
     context "only in 3.4 and up", :multi => true do
-        it "should do a create in a multi-op" do
+        it "should do all the multi ops" do
             delete_path = @zk.create("/zkruby/multi","hello multi",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
 
             new_path = nil
