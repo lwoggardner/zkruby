@@ -296,7 +296,7 @@ module ZooKeeper::RubyIO
                 end
             else
                 mutex.synchronize do
-                    cv.wait()
+                    cv.wait() unless defined?(@result)
                 end
             end
 
