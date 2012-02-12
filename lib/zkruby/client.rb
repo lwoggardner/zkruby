@@ -151,6 +151,12 @@ module ZooKeeper
         @binding_storage.current[CURRENT].last if @binding_storage.current[CURRENT]
     end
 
+    # Allow ZK a chance to send its data/ping
+    # particularly required for the eventmachine binding
+    def self.pass
+       @binding_storage.pass
+    end
+
     class WatchEvent
         attr_reader :watch_types
         def initialize(watch_types)

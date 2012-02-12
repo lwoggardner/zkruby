@@ -102,6 +102,7 @@ module ZooKeeper
                             rm_op.errback { |err| child_results[child_path] = err }
 
                             child_ops[child_path] = rm_op
+                            ZK.pass
                         end
 
                         # Wait until all our children are done (or error'd)
