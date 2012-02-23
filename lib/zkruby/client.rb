@@ -249,7 +249,7 @@ module ZooKeeper
     # All calls operate asynchronously or synchronously based on whether a block is supplied
     #
     # Without a block, requests are executed synchronously and either return results directly or raise
-    # a {Error}
+    # an {Error}
     #
     # With a block, the request returns immediately with a {AsyncOp}. When the server responds the
     # block is passed the results. Errors will be sent to an error callback if registered on the {AsyncOp}
@@ -283,7 +283,7 @@ module ZooKeeper
 
         # Assign the watcher to the session. This watcher will receive session connect/disconnect/expired
         # events as well as any path based watches registered to the API calls using the literal value "true"
-        # @param [Watcher|Proc] watcher
+        # @param [Watcher,#process_watch,Proc] watcher
         def watcher=(watcher)
             @binding.session.watcher=watcher
         end
@@ -291,7 +291,7 @@ module ZooKeeper
         # Retrieve the list of children at the given path
         # @overload children(path,watch=nil)
         #    @param [String] path 
-        #    @param [Watcher] if supplied sets a child watch on the given path
+        #    @param [Watcher,#process_watch,Proc] if supplied sets a child watch on the given path
         #    @return [Data::Stat,Array<String>] stat,children stat of path and the list of child nodes
         #    @raise [Error] 
         # @overload children(path,watch=nil)
@@ -327,7 +327,7 @@ module ZooKeeper
         # Retrieve data
         # @overload get(path,watch=nil)
         #   @param [String] path
-        #   @param [Watcher] watch optional data watch to set on this path
+        #   @param [Watcher,#process_watch,Proc] watch optional data watch to set on this path
         #   @return [Data::Stat,String] stat,data at path 
         #   @raise [Error]
         # @overload get(path,watch=nil)
@@ -348,19 +348,19 @@ module ZooKeeper
         # Retrieve the {Data::Stat} of a path, or nil if the path does not exist
         # @overload exists(path,watch=nil)
         #   @param [String] path
-        #   @param [Watcher] wath optional exists watch to set on this path
+        #   @param [Watcher,#process_watch,Proc] watch optional exists watch to set on this path
         #   @return [Data::Stat] Stat of the path or nil if the path does not exist
         #   @raise [Error]
         # @overload exists(path,watch=nil)
         #   @return [AsyncOp] asynchronous operation
         #   @yieldparam [Data:Stat] stat Stat of the path or nil if the path did not exist
-        def exists(path,watch=nil,&blk)
+        def exists(path,watch=nil,&callback)
             return synchronous_call(:exists,path,watch)[0] unless block_given?
             path = chroot(path) 
 
             req = Proto::ExistsRequest.new(:path => path, :watch => watch)
             queue_request(req,:exists,3,Proto::ExistsResponse,:exists,watch,ExistsPacket) do | response |
-                blk.call( response.nil? ? nil : response.stat )
+                callback.call( response.nil? ? nil : response.stat )
             end
         end
         alias :exists? :exists

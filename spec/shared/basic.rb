@@ -88,6 +88,33 @@ shared_examples_for "basic integration" do
             op.value.should == :found_no_node_error
         end
 
+        it "should rescue errors" do
+            op = @zk.get("/an/unknown/path") do
+                :callback_invoked_unexpectedly
+            end
+
+            op.async_rescue (ZK::Error::NO_NODE) { :found_no_node_error }
+
+            op.value.should == :found_no_node_error
+        end
+
+        it "should retry on error" do
+            @zk.create("/retrypath","",ZK::ACL_OPEN_UNSAFE,:ephemeral)
+
+            result = :not_ready_yet
+            op = @zk.set("/retrypath","new data",2) do
+                result 
+            end
+
+            op.async_rescue ZK::Error::BAD_VERSION do
+                @zk.set("/retrypath","version 2",-1)
+                result = :all_done_now
+                op.async_retry
+            end
+
+            op.value.should == :all_done_now
+        end
+
         it "should capture exceptions from asynchronous callback" do
             async_caller = nil
             op = @zk.exists?("/zkruby") do |stat|

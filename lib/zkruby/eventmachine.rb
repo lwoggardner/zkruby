@@ -111,72 +111,62 @@ module ZooKeeper
             end
 
             def queue_request(*args,&callback)
-                op = AsyncOp.new(self,&callback)
-                begin
+                 AsyncOp.new(self,callback) do |op|
                     @session.queue_request(*args) do |error,response|
                         op.resume(error,response)
                     end
-                rescue ZooKeeper::Error => ex
-                    op.resume(ex,nil)
                 end
-
-                op
             end
 
             def close(&callback)
-
-                op = AsyncOp.new(self,&callback)
-
-                begin
+                AsyncOp.new(self,callback) do |op|
                     @session.close() do |error,response|
                         op.resume(error,response) 
                     end
-                rescue ZooKeeper::Error => ex
-                    op.resume(ex,nil)
                 end
-
-                op
             end
 
         end #class Binding
 
         class AsyncOp < ZooKeeper::AsyncOp
 
-            def initialize(binding,&callback)
+            def initialize(binding,callback,&operation)
                 @em_binding = binding
-
-                # Wrap the callback in its own Strand
-                @op_strand = Strand.new do
-                    #immediately pause
-                    error, response = Strand.yield
-                    Strand.current[ZooKeeper::CURRENT] =  [ @em_binding.client ] 
-                    raise error if error
-                    callback.call(response)
-                end
+                super(callback,&operation)
             end
-
-            def resume(error,response)
-                #TODO - raise issue in strand for resume to take arguments
-                op_strand.fiber.resume(error,response)
-            end
-
+ 
             private
 
-            attr_reader :op_strand,:err_strand
-
-            def set_error_handler(errcallback)
-                @err_strand = Strand.new() do
-                    begin
-                        op_strand.value()
-                    rescue StandardError => ex
-                        Strand.current[ZooKeeper::CURRENT] =  [ @em_binding.client ] 
-                        errcallback.call(ex)   
-                    end
+            
+            def process_resume(error,response)
+                if @strand
+                    @strand.fiber.resume(error,response)
+                else
+                    @error,@result = process_response(error,response)
                 end
             end
 
             def wait_value()
-                err_strand ? err_strand.value : op_strand.value 
+                if resumed?
+                    raise @error if @error
+                    @result
+                else
+                    # Start a new strand and wait for it
+                    @strand = Strand.new do
+                        Strand.current[ZooKeeper::CURRENT] =  [ @em_binding.client ]
+                        
+                        #if we are not resumed then it means we've been retried during
+                        #processing of the callback or rescue handlers
+                        until resumed? do
+                            error, response = Strand.yield
+                            error, result = process_response(error,response)
+                        end
+                        raise error if error
+                        result
+                    end
+                    @strand.value
+                end
+                
             end
 
         end #class AsyncOp

@@ -42,4 +42,5 @@ properties = t.cmd("mntr")
 RSpec.configure do |c|
     #Exclude multi unless we are on a 3.4 server
     c.filter_run_excluding :multi => true unless properties
+    c.filter_run_excluding :perf => true
 end

@@ -87,6 +87,7 @@ module ZooKeeper::RubyIO
                     end
                     logger.debug { "Sending: " + data.unpack("H*")[0] }
                 end
+                logger.debug { "Write loop finished" }
             rescue Exception => ex
                 logger.warn("Exception in write loop",ex)
                 disconnect()
@@ -150,7 +151,7 @@ module ZooKeeper::RubyIO
         end
 
         def self.context(&context_block)
-           yield Thread 
+            yield Thread 
         end
 
         def initialize()
@@ -183,6 +184,7 @@ module ZooKeeper::RubyIO
                 loop do
                     break unless pop_event_queue() 
                 end
+                logger.debug { "Event thread finished" }
             end
 
             # and the read thread
@@ -196,7 +198,7 @@ module ZooKeeper::RubyIO
                         conn =  session.synchronize { session.disconnected(); session.conn() }
                     end
                     #event of death
-                    logger.debug("Pushing nil (event of death) to event queue")
+                    logger.debug { "Ending read loop, pushing nil (event of death) to event queue" }
                     @event_queue.push(nil)
                 rescue Exception => ex
                     logger.error( "Exception in session thread", ex )
@@ -213,29 +215,19 @@ module ZooKeeper::RubyIO
 
 
         def close(&callback)
-            op = AsyncOp.new(self,&callback)
-            
-            session.synchronize do
-                    session.close() do |error,response|
-                        op.resume(error,response)
-                    end
-            end
-
-            op
-            
+            AsyncOp.new(self,callback) do |op|
+                session.synchronize { 
+                    session.close() { |error,response| op.resume(error,response) }
+                }
+            end 
         end
 
         def queue_request(*args,&callback)
-
-            op = AsyncOp.new(self,&callback)
-            
-            session.synchronize do 
-                session.queue_request(*args) do |error,response|
-                    op.resume(error,response)                    
-                end
+            AsyncOp.new(self,callback) do |op|
+                session.synchronize  {
+                    session.queue_request(*args) { |error,response| op.resume(error,response) }
+                }
             end
-
-            op
         end
 
         def event_thread?
@@ -250,54 +242,36 @@ module ZooKeeper::RubyIO
 
     class AsyncOp < ::ZooKeeper::AsyncOp
 
-        def initialize(binding,&callback)
+        def initialize(binding,callback,&op_block)
             @mutex = Monitor.new
             @cv = @mutex.new_cond()
-            @callback = callback
             @rubyio = binding
-        end
-
-        def resume(error,response)
-            mutex.synchronize do
-                @error = error
-                @result = nil
-                begin
-                    @result = @callback.call(response) unless error
-                rescue StandardError => ex
-                    @error = ex
-                end
-               
-                if @error && @errback
-                    begin
-                        @result = @errback.call(@error) 
-                        @error = nil
-                    rescue StandardError => ex
-                        @error = ex
-                    end
-                end
-
-                cv.signal()
-            end
+            super(callback,&op_block)
         end
 
         private
-            attr_reader :mutex, :cv, :error, :result
 
-        def set_error_handler(errback)
-            @errback = errback
+        attr_reader :mutex, :cv, :error, :result
+
+        def process_resume(error,response)
+            logger.debug("Resuming with error #{error} #{response}") 
+            mutex.synchronize do
+                @error,@result = process_response(error,response)
+                #if we're no longer resumed? then it means we have retried
+                #so we don't want to signal
+                cv.signal() if resumed?
+            end
         end
-     
+
         def wait_value()
             if @rubyio.event_thread?
                 #Waiting in the event thread (eg made a synchronous call inside a callback)
                 #Keep processing events until we are resumed
-                until defined?(@result)
+                until resumed?
                     break unless @rubyio.pop_event_queue()
                 end
             else
-                mutex.synchronize do
-                    cv.wait() unless defined?(@result)
-                end
+                mutex.synchronize { cv.wait() unless resumed? } 
             end
 
             raise error if error
