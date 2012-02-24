@@ -170,24 +170,24 @@ module ZooKeeper
         #ruby. Unfortunately rescue is a reserved word
         # @param matches [Class,...] subclasses of Exception to match, defaults to {StandardError}
         # @param errblock the block to call if an error matches
+        # @return self
         # @yieldparam [Exception] ex the exception raised by the async operation OR by its callback
         def async_rescue(*matches,&errblock)
             matches << StandardError if matches.empty?
-            matches.each do |match|
-                rescue_blocks << [ match ,errblock ]
-                if @op_error && match === @op_error
-                    begin
-                        @allow_retry = true
-                        @op_rescue= [ nil, errblock.call(@op_error) ]
-                    rescue StandardError => ex
-                        @operation_rescue_result = [ ex, nil ]
-                    ensure
-                        @resumed = true
-                        @op_error = nil
-                        @allow_retry = false
-                    end
+            rescue_blocks << [ matches ,errblock ]
+            if @op_error && matches.any? { |m| m  === @op_error }
+                begin
+                    @allow_retry = true
+                    @op_rescue= [ nil, errblock.call(@op_error) ]
+                rescue StandardError => ex
+                    @operation_rescue_result = [ ex, nil ]
+                ensure
+                    @resumed = true
+                    @op_error = nil
+                    @allow_retry = false
                 end
             end
+            self
         end
         alias :on_error :async_rescue
         alias :op_rescue :async_rescue
@@ -278,7 +278,7 @@ module ZooKeeper
                 error = ex
             end
 
-            match,rb = rescue_blocks.detect() { |match,errblock| match === error }
+            matches,rb = rescue_blocks.detect() { |matches,errblock| matches.any? { |m| m === error } }
             return [ error, nil ] unless rb
 
             begin
