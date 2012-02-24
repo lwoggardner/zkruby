@@ -117,7 +117,7 @@ class WrappedOp < AsyncOp
     def wait_value()
         begin  
             @delegate_op.value()
-        rescue StandardError > err
+        rescue StandardError => err
             @errback ? @errback.call(err) : raise
         end
     end
