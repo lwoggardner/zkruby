@@ -152,7 +152,7 @@ shared_examples_for "basic integration" do
             watcher.should_receive(:process_watch).with(ZK::KeeperState::CONNECTED,nil,ZK::WatchEvent::NONE)
             watcher.should_not_receive(:process_watch).with(ZK::KeeperState::EXPIRED,nil,ZK::WatchEvent::NONE)
             @zk.watcher = watcher
-            restart_cluster(2)
+            restart_cluster(1.5)
             @zk.exists?("/zkruby").should be_true
         end
 
