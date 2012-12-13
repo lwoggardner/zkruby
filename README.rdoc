@@ -77,21 +77,21 @@ Disadvantages:
 
 == DEVELOPERS:
 
-Checkout the zookeeper source from http://zookeeper.apache.org
+Download ZooKeeper from http://zookeeper.apache.org
 
-Checkout the zkruby source into the contrib directory  
+Create a conf/zoo.cfg file (copying sample.zoo.cfg is fine)
 
-Install hoe
+Checkout the zkruby source into the contrib directory
 
-  $ (sudo) gem install hoe 
+Copy (if different) src/zookeeper.jute to contrib/zkruby/src/zookeeper.jute
 
-Install other dependencies
+Get gem dependencies
 
-  $ rake check_extra_deps
+  $ bundle install 
 
 Generate docs and run the tests/specs
 
-  $ rake newb
+  $ rake 
 
 == LICENSE:
 

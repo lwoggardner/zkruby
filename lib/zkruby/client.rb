@@ -48,7 +48,7 @@ module ZooKeeper
 
 
     # Combine permissions constants
-    # @param [Perms] perms... list of permissions to combine, can be {Perms} constants, symbols or ints 
+    # @param [Perms] perms list of permissions to combine, can be {Perms} constants, symbols or ints 
     # @return [Fixnum] integer representing the combined permission
     def self.perms(*perms)
         perms.inject(0) { | result, perm | result = result | Perms.get(perm) }
@@ -56,7 +56,7 @@ module ZooKeeper
 
     # Convenience method to create a zk Identity
     # @param [String] scheme
-    # @param [String] identity
+    # @param [String] id
     # @return [Data::Identity] the encapsulated identity for the given scheme
     def self.id(scheme,id)
         Data::Identity.new(:scheme => scheme, :identity => id)
@@ -65,7 +65,7 @@ module ZooKeeper
     # Convenience method to create a zk ACL
     #    ZK.acl(ZK.id("world","anyone"), ZK::Perms.DELETE, ZL::Perms.WRITE)
     # @param [Data::Identity] id
-    # @param [Perms] *perms list of permissions
+    # @param [Perms] perms list of permissions
     # @return [Data::ACL] an access control list
     # @see #perms
     # 
@@ -144,7 +144,7 @@ module ZooKeeper
         end
     end
 
-    # within the block supplied to {#connect} this will return the
+    # within the block supplied to {connect} this will return the
     # current ZK client
     def self.current
         #We'd use if key? here if strand supported it
@@ -181,10 +181,9 @@ module ZooKeeper
     end
 
 
-    # @abstract.
+    #@abstract
     class Watcher
         # @param [KeeperState] state representing the session state
-        #    (:connected, :disconnected, :auth_failed, :session_expired)
         # @param [String] path the effected path
         # @param [WatchEvent] event the event that triggered the watch 
         def process_watch(state,path,event)

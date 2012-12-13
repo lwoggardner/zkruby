@@ -8,8 +8,8 @@ module Hoe::Jute
    #attr_accessor :jute_compiler
    def initialize_jute
         self.jute_tasks = [:test,:spec,:package]
-        dependency 'citrus', '~> 2.4.0', :development
         #dependency 'jute' # if jute is ever a separate gem
+        dependency 'citrus', '~> 2.4.0', :development
         dependency 'bindata', '~> 1.4.1'
    end
 
