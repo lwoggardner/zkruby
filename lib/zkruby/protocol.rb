@@ -15,7 +15,8 @@ module ZooKeeper
 
         def receive_data data # :nodoc:
 
-            @buffer ||= StringIO.new()
+            # JRuby needs the encoding set explicitly
+            @buffer ||= StringIO.new().set_encoding('binary')
             @buffer.seek(0, IO::SEEK_END)
             @buffer << data
             @buffer.rewind
