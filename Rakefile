@@ -4,11 +4,15 @@ $:.unshift "jute/lib"
 require 'rake/clean'
 require 'yard'
 require './yard_ext/enum_handler.rb'
-#require "bundler/gem_tasks"
+require "bundler/gem_tasks"
 require 'rspec/core/rake_task'
 require 'jute/task'
 
 RSpec::Core::RakeTask.new
+RSpec::Core::RakeTask.new(:perf_spec) do |t|
+      t.rspec_opts = "--tag perf"
+end
+
 YARD::Rake::YardocTask.new 
 
 Jute::Task.new() do |t|
@@ -17,7 +21,7 @@ Jute::Task.new() do |t|
       "org.apache.zookeeper.proto" => "ZooKeeper::Proto"}
 end
 
-
+task :perf_spec => :jute
 task :spec => :jute
 task :build => :jute
 task :install => :jute

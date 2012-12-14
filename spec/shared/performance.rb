@@ -5,6 +5,9 @@ shared_examples_for "performance" do
         it "should create and retrieve lots of nodes in a reasonable amount of time" do
 
             path = "/zkruby/rspec-perf"
+
+            @zk.mkpath(path)
+
             op = nil
             start = Time.now
             count = 0

@@ -24,7 +24,7 @@ Gem::Specification.new do |s|
   s.add_dependency 'strand', '~> 0.2.0.rc0'
   s.add_dependency 'bindata', '~> 1.4.1'
 
-  s.add_development_dependency 'eventmachine', '~> 0.12.10'
+  s.add_development_dependency 'eventmachine', '>= 0.12.10'
   s.add_development_dependency 'logging', '>= 1.4.1'
 
   s.add_development_dependency("rake")

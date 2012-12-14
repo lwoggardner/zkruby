@@ -181,7 +181,8 @@ module ZooKeeper
     end
 
 
-    #@abstract
+    # @abstract
+    # the interfaces for all watches
     class Watcher
         # @param [KeeperState] state representing the session state
         # @param [String] path the effected path
@@ -253,7 +254,7 @@ module ZooKeeper
     # With a block, the request returns immediately with a {AsyncOp}. When the server responds the
     # block is passed the results. Errors will be sent to an error callback if registered on the {AsyncOp}
     #
-    # Requests that take a watch argument can be passed either...
+    # Requests that take a watch argument can be passed either... 
     #   * An object that quacks like a {Watcher} 
     #   * A Proc will be invoked with arguments state, path, event
     #   * The literal value "true" refers to the default watcher registered with the session
