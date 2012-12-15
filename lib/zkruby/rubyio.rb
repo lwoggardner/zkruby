@@ -1,6 +1,5 @@
 require 'socket'
 require 'thread'
-require 'monitor'
 
 # Binding over standard ruby sockets
 #
@@ -43,6 +42,8 @@ module ZooKeeper::RubyIO
         HAS_NONBLOCKING_CONNECT = RUBY_PLATFORM == "java" && Gem::Version.new(JRUBY_VERSION.dup) >= Gem::Version.new("1.6.7")
         SOL_TCP = IPPROTO_TCP unless defined? ::Socket::SOL_TCP
 
+        attr_reader :session
+
         def initialize(host,port,timeout,session)
             @session = session
             @write_queue = Queue.new()
@@ -62,6 +63,7 @@ module ZooKeeper::RubyIO
                 begin
                     sock.connect_nonblock(sockaddr)
                 rescue Errno::EINPROGRESS
+                  
                     begin
                         read,write,errors  = IO.select(nil, [sock], nil, timeout)
                     rescue Exception => ex
@@ -96,17 +98,17 @@ module ZooKeeper::RubyIO
                     sock = nil
                 end
             end
-            @socket = sock
-            Thread.new(sock) { |sock| write_loop(sock) } if sock
+
+            Thread.new(sock) { |sock| write_loop(sock) } 
+            read_loop(sock)
         end
 
-        # This is called from random client threads, but only within
-        # a @session.synchronized() block
+        # This is called from random client threads
         def send_data(data)
             @write_queue.push(data)
         end
 
-        # Since this runs in its very own thread
+        # Since this runs in its very own thread and has no timers
         # we can use boring blocking IO
         def write_loop(socket)
             Thread.current[:name] = "ZooKeeper::RubyIO::WriteLoop"
@@ -124,27 +126,27 @@ module ZooKeeper::RubyIO
                 logger.warn("Exception in write loop",ex)
                 disconnect()
             end
-
         end
 
-        def read_loop()
-            socket = @socket
+        def read_loop(socket)
+            Thread.current[:name] = "ZooKeeper::RubyIO::ReadLoop"
+            session.prime_connection(self) if socket
             ping = 0
-            while socket # effectively forever
+            while socket # effectively forever since we never break it from this end
                 begin
                     data = socket.read_nonblock(1024)
                     logger.debug { "Received (#{data.length})" + data.unpack("H*")[0] }
                     receive_data(data)
                     ping = 0
                 rescue IO::WaitReadable
-                    select_result = IO.select([socket],[],[],@session.ping_interval)
+                    select_result = IO.select([socket],[],[],session.ping_interval)
                     unless select_result
                         ping += 1
                         # two timeouts in a row mean we need to send a ping
                         case ping
-                        when 1 ; @session.synchronize { @session.ping() }
+                        when 1 ;  session.ping()
                         when 2
-                            logger.debug{"No response to ping in #{@session.ping_interval}*2"}
+                            logger.debug{"No response to ping in #{session.ping_interval}*2"}
                             break
                         end
                     end
@@ -156,161 +158,29 @@ module ZooKeeper::RubyIO
                     break
                 end
             end
-            disconnect()
+            disconnect(socket)
+            session.disconnected()
         end
 
-        def disconnect()
-            socket = @socket
-            @socket = nil
+        # @api protocol
+        def receive_records(packet_io)
+            session.receive_records(packet_io)
+        end
+
+        private
+        def disconnect(socket)
             socket.close if socket
         rescue Exception => ex
             #oh well
             logger.debug("Exception closing socket",ex)
         end
 
-        # Protocol requirement
-        def receive_records(packet_io)
-            @session.synchronize { @session.receive_records(packet_io) }
-        end
-
     end #Class connection
 
-    class Binding
-        include Slf4r::Logger
-        attr_reader :session
-        def self.available?
-            true
-        end
-
-        def self.context(&context_block)
-            yield Thread 
-        end
-
-        def initialize()
-            @event_queue = Queue.new()
-        end
-
-        def pop_event_queue()
-            queued = @event_queue.pop()
-            return false  unless queued
-            logger.debug { "Invoking #{queued[0]}" }
-            callback,*args = queued
-            callback.call(*args)
-            logger.debug { "Completed #{queued[0]}" }
-            return true
-        rescue Exception => ex
-            logger.warn( "Exception in event thread", ex )
-            return true
-        end
-
-        def start(client,session)
-            @session = session
-            @session.extend(MonitorMixin)
-
-            # start the event thread
-            @event_thread = Thread.new() do
-                Thread.current[:name] = "ZooKeeper::RubyIO::EventLoop"
-
-                # In this thread, the current client is always this client!
-                Thread.current[ZooKeeper::CURRENT] = [client]
-                loop do
-                    break unless pop_event_queue() 
-                end
-                logger.debug { "Event thread finished" }
-            end
-
-            # and the read thread
-            Thread.new() do
-                begin
-                    Thread.current[:name] = "ZooKeeper::RubyIO::ReadLoop"
-                    conn = session.synchronize { session.start(); session.conn() } # will invoke connect 
-                    loop do
-                        break unless conn
-                        conn.read_loop()
-                        conn =  session.synchronize { session.disconnected(); session.conn() }
-                    end
-                    #event of death
-                    logger.debug { "Ending read loop, pushing nil (event of death) to event queue" }
-                    @event_queue.push(nil)
-                rescue Exception => ex
-                    logger.error( "Exception in session thread", ex )
-                end
-            end
-        end
-
-        # session callback, IO thread
-        def connect(host,port,delay,timeout)
-            sleep(delay)
-            conn = Connection.new(host,port,timeout,session)
-            session.synchronize() { session.prime_connection(conn) }
-        end
-
-
-        def close(&callback)
-            AsyncOp.new(self,callback) do |op|
-                session.synchronize { 
-                    session.close() { |error,response| op.resume(error,response) }
-                }
-            end 
-        end
-
-        def queue_request(*args,&callback)
-            AsyncOp.new(self,callback) do |op|
-                session.synchronize  {
-                    session.queue_request(*args) { |error,response| op.resume(error,response) }
-                }
-            end
-        end
-
-        def event_thread?
-            Thread.current.equal?(@event_thread)
-        end
-
-        def invoke(*args)
-            @event_queue.push(args)
-        end
-
-    end #Binding
-
-    class AsyncOp < ::ZooKeeper::AsyncOp
-
-        def initialize(binding,callback,&op_block)
-            @mutex = Monitor.new
-            @cv = @mutex.new_cond()
-            @rubyio = binding
-            super(callback,&op_block)
-        end
-
-        private
-
-        attr_reader :mutex, :cv, :error, :result
-
-        def process_resume(error,response)
-            logger.debug("Resuming with error #{error} #{response}") 
-            mutex.synchronize do
-                @error,@result = process_response(error,response)
-                #if we're no longer resumed? then it means we have retried
-                #so we don't want to signal
-                cv.signal() if resumed?
-            end
-        end
-
-        def wait_value()
-            if @rubyio.event_thread?
-                #Waiting in the event thread (eg made a synchronous call inside a callback)
-                #Keep processing events until we are resumed
-                until resumed?
-                    break unless @rubyio.pop_event_queue()
-                end
-            else
-                mutex.synchronize { cv.wait() unless resumed? } 
-            end
-
-            raise error if error
-            result
+    module Binding
+        def connect(host,port,timeout)
+            Connection.new(host,port,timeout,self)
         end
     end
+end
 
-end #ZooKeeper::RubyIO
-# Add our binding
-ZooKeeper.add_binding(ZooKeeper::RubyIO::Binding)

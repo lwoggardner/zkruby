@@ -3,10 +3,9 @@
 # It implements the client side of the ZooKeeper TCP protocol directly rather
 # than calling the zk client libraries
 #
-
-require 'zkruby/version'
-
 module ZooKeeper
+    # Major/Minor numbers track zookeeper itself, final digit is our build number
+    VERSION = "3.4.4"
     @bindings = []
     def self.add_binding(binding)
         @bindings << binding unless @bindings.include?(binding)

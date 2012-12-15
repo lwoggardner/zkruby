@@ -48,7 +48,7 @@ module ZooKeeper
 
 
     # Combine permissions constants
-    # @param [Perms] perms list of permissions to combine, can be {Perms} constants, symbols or ints 
+    # @param [Perms] perms... list of permissions to combine, can be {Perms} constants, symbols or ints 
     # @return [Fixnum] integer representing the combined permission
     def self.perms(*perms)
         perms.inject(0) { | result, perm | result = result | Perms.get(perm) }
@@ -56,7 +56,7 @@ module ZooKeeper
 
     # Convenience method to create a zk Identity
     # @param [String] scheme
-    # @param [String] id
+    # @param [String] identity
     # @return [Data::Identity] the encapsulated identity for the given scheme
     def self.id(scheme,id)
         Data::Identity.new(:scheme => scheme, :identity => id)
@@ -65,7 +65,7 @@ module ZooKeeper
     # Convenience method to create a zk ACL
     #    ZK.acl(ZK.id("world","anyone"), ZK::Perms.DELETE, ZL::Perms.WRITE)
     # @param [Data::Identity] id
-    # @param [Perms] perms list of permissions
+    # @param [Perms] *perms list of permissions
     # @return [Data::ACL] an access control list
     # @see #perms
     # 
@@ -108,8 +108,6 @@ module ZooKeeper
     CURRENT = :zookeeper_current
     # Main method for connecting to a client
     # @param addresses [Array<String>] list of host:port for the ZK cluster as Array or comma separated String
-    # @option options [Class]  :binding binding optional implementation class
-    #    either {EventMachine::Binding} or {RubyIO::Binding} but normally autodiscovered
     # @option options [String] :chroot chroot path.
     #    All client calls will be made relative to this path 
     # @option options [Watcher] :watch the default watcher
@@ -118,43 +116,47 @@ module ZooKeeper
     # @yieldparam [Client]
     # @return [Client] 
     def self.connect(addresses,options={},&block)
-        if options.has_key?(:binding)
-            binding_type = options[:binding]
-        else
-            binding_type = @bindings.detect { |b| b.available? }
-            raise ProtocolError,"No available binding" unless binding_type
-        end
-        binding = binding_type.new()
-        session = Session.new(binding,addresses,options)
-        client = Client.new(binding)
-        binding.start(client,session)
 
+        binding_module = if Strand.event_machine?                 
+            require 'zkruby/eventmachine'
+            ZooKeeper::EventMachine::Binding
+        else
+            require 'zkruby/rubyio'
+            ZooKeeper::RubyIO::Binding
+        end
+
+        logger.debug { "Using binding #{binding_module}" }
+        session = Session.new(addresses,options)
+        session.extend(binding_module)
+
+        client = Client.new(session)
+
+        session.start(client)
+        
         return client unless block_given?
 
-        binding_type.context() do |storage|
-            @binding_storage = storage
-            storage.current[CURRENT] ||= []
-            storage.current[CURRENT].push(client)
-            begin
-                block.call(client)
-            ensure
-                storage.current[CURRENT].pop
-                client.close() unless session.closed?
-            end
+        storage = Strand.current[CURRENT] ||= []
+        storage.push(client)
+        begin
+            yield client
+        ensure
+            storage.pop
+            #TODO this will throw an exception if expired
+            client.close() 
         end
     end
 
-    # within the block supplied to {connect} this will return the
+    # within the block supplied to {#connect} this will return the
     # current ZK client
     def self.current
         #We'd use if key? here if strand supported it
-        @binding_storage.current[CURRENT].last if @binding_storage.current[CURRENT]
+        Strand.current[CURRENT].last if Strand.current[CURRENT]
     end
 
     # Allow ZK a chance to send its data/ping
     # particularly required for the eventmachine binding
     def self.pass
-       @binding_storage.pass
+        Strand.pass
     end
 
     class WatchEvent
@@ -181,10 +183,10 @@ module ZooKeeper
     end
 
 
-    # @abstract
-    # the interfaces for all watches
+    # @abstract.
     class Watcher
         # @param [KeeperState] state representing the session state
+        #    (:connected, :disconnected, :auth_failed, :session_expired)
         # @param [String] path the effected path
         # @param [WatchEvent] event the event that triggered the watch 
         def process_watch(state,path,event)
@@ -254,7 +256,7 @@ module ZooKeeper
     # With a block, the request returns immediately with a {AsyncOp}. When the server responds the
     # block is passed the results. Errors will be sent to an error callback if registered on the {AsyncOp}
     #
-    # Requests that take a watch argument can be passed either... 
+    # Requests that take a watch argument can be passed either...
     #   * An object that quacks like a {Watcher} 
     #   * A Proc will be invoked with arguments state, path, event
     #   * The literal value "true" refers to the default watcher registered with the session
@@ -263,29 +265,30 @@ module ZooKeeper
     # or with state :expired and event :none when the session is finalised 
     class Client
 
+        attr_reader :session
         include Operations
         # @api private
         # See {::ZooKeeper.connect}
-        def initialize(binding)
-            @binding = binding
+        def initialize(session)
+            @session = session 
         end
 
         # Session timeout, initially as supplied, but once connected is the negotiated
         # timeout with the server. 
         def timeout
-            @binding.session.timeout
+            session.timeout
         end
 
         # The currently registered default watcher
         def watcher 
-            @binding.session.watcher
+            session.watcher
         end
 
         # Assign the watcher to the session. This watcher will receive session connect/disconnect/expired
         # events as well as any path based watches registered to the API calls using the literal value "true"
         # @param [Watcher,#process_watch,Proc] watcher
         def watcher=(watcher)
-            @binding.session.watcher=watcher
+            session.watcher=watcher
         end
 
         # Retrieve the list of children at the given path
@@ -457,7 +460,7 @@ module ZooKeeper
         #    @yield [] callback invoked when session is closed 
         def close(&blk)
             return synchronous_call(:close) unless block_given?
-            @binding.close(&blk)
+            session.close(&blk)
         end
 
         # @api private
@@ -509,9 +512,6 @@ module ZooKeeper
         end
         private
 
-        def session
-            @binding.session
-        end
 
         def synchronous_call(method,*args)
             op = self.send(method,*args) do |*results|
@@ -523,7 +523,7 @@ module ZooKeeper
         end
 
         def queue_request(*args,&blk)
-            op = @binding.queue_request(*args,&blk)
+            op = session.request(*args,&blk)
             op.backtrace = caller[1..-1]
             op
         end
