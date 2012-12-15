@@ -1,4 +1,4 @@
-# This is the main require for standard ruby io/thread based binding
+# This is the main require for the eventmachine based binding
 
 require 'zkruby/zkruby'
 require 'zkruby/eventmachine'
