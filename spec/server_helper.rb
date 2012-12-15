@@ -4,15 +4,18 @@ module ZooKeeperServerHelper
 
     include Slf4r::Logger
 
+    JRUBY_COMPAT_SYSTEM = (RUBY_PLATFORM == "java" && Gem::Version.new(JRUBY_VERSION.dup) < Gem::Version.new("1.6.5"))
+
+    def jruby_safe_system(arg)
+        arg = "#{arg} &" if JRUBY_COMPAT_SYSTEM
+        system(arg)
+        sleep(3) if JRUBY_COMPAT_SYSTEM
+    end
+
     def restart_cluster(delay=0)
-        system("../../bin/zkServer.sh stop >> zk.out")
+        jruby_safe_system("../../bin/zkServer.sh stop >> zk.out")
         Kernel::sleep(delay) if delay > 0
-        if (::RUBY_PLATFORM == "java" && Gem::Version.new(JRUBY_VERSION) < Gem::Version.new("1.7.0"))
-            #in JRuby 1.6.3 system does not return 
-            system("../../bin/zkServer.sh start >> zk.out &")
-        else
-            system("../../bin/zkServer.sh start >> zk.out")
-        end
+        jruby_safe_system("../../bin/zkServer.sh start >> zk.out")
     end
 
     def get_addresses()
