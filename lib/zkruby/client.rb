@@ -48,7 +48,7 @@ module ZooKeeper
 
 
     # Combine permissions constants
-    # @param [Perms] perms... list of permissions to combine, can be {Perms} constants, symbols or ints 
+    # @param [Perms...] perms list of permissions to combine, can be {Perms} constants, symbols or ints 
     # @return [Fixnum] integer representing the combined permission
     def self.perms(*perms)
         perms.inject(0) { | result, perm | result = result | Perms.get(perm) }
@@ -56,7 +56,7 @@ module ZooKeeper
 
     # Convenience method to create a zk Identity
     # @param [String] scheme
-    # @param [String] identity
+    # @param [String] id
     # @return [Data::Identity] the encapsulated identity for the given scheme
     def self.id(scheme,id)
         Data::Identity.new(:scheme => scheme, :identity => id)
@@ -65,7 +65,7 @@ module ZooKeeper
     # Convenience method to create a zk ACL
     #    ZK.acl(ZK.id("world","anyone"), ZK::Perms.DELETE, ZL::Perms.WRITE)
     # @param [Data::Identity] id
-    # @param [Perms] *perms list of permissions
+    # @param [Perms...] perms list of permissions
     # @return [Data::ACL] an access control list
     # @see #perms
     # 
@@ -127,6 +127,7 @@ module ZooKeeper
 
         logger.debug { "Using binding #{binding_module}" }
         session = Session.new(addresses,options)
+        # Extend the appropriate #connect method into the session
         session.extend(binding_module)
 
         client = Client.new(session)
@@ -146,7 +147,7 @@ module ZooKeeper
         end
     end
 
-    # within the block supplied to {#connect} this will return the
+    # within the block supplied to {ZooKeeper.connect} this will return the
     # current ZK client
     def self.current
         #We'd use if key? here if strand supported it
@@ -183,7 +184,8 @@ module ZooKeeper
     end
 
 
-    # @abstract.
+    # @abstract
+    # The watch interface
     class Watcher
         # @param [KeeperState] state representing the session state
         #    (:connected, :disconnected, :auth_failed, :session_expired)
@@ -454,7 +456,7 @@ module ZooKeeper
 
         # Close the session
         # @overload close()
-        #    @raise [Error]
+        #    @raise [Error] 
         # @overload close()
         #    @return [AsyncOp] asynchronous operation
         #    @yield [] callback invoked when session is closed 
@@ -510,15 +512,21 @@ module ZooKeeper
             yield txn
             txn.commit
         end
+
+
         private
 
-
+        # This is where the magic happens!
         def synchronous_call(method,*args)
+            # Re-enter the calling method in asynchronous style
             op = self.send(method,*args) do |*results|
                 results 
             end
+
+            # Remove this call from the stored backtrace
             op.backtrace = op.backtrace[2..-1] if op.backtrace
 
+            # Wait for the asynchronous op to finish and return its value
             op.value
         end
 
@@ -546,7 +554,8 @@ module ZooKeeper
     # If the transaction fails none of these callbacks will be executed.
     class Transaction
         include Operations
-        #:nodoc
+        # @api private
+        # See {Client#transaction}
         def initialize(client,session)
             @client = client
             @session = session

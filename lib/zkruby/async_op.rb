@@ -49,7 +49,7 @@ module ZooKeeper
 
         #Rescue asynchronous exceptions in a similar manner to normal
         #ruby. Unfortunately rescue is a reserved word
-        # @param matches [Class,...] subclasses of Exception to match, defaults to {StandardError}
+        # @param matches [Class,...] subclasses of Exception to match, defaults to {::StandardError}
         # @param errblock the block to call if an error matches
         # @return self
         # @yieldparam [Exception] ex the exception raised by the async operation OR by its callback

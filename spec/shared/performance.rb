@@ -11,7 +11,7 @@ shared_examples_for "performance" do
             op = nil
             start = Time.now
             count = 0
-            pass_every = 10
+            pass_every = 5
             first_error = true
             6000.times do
                 count += 1

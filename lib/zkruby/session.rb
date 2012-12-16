@@ -38,7 +38,7 @@ module ZooKeeper
         attr_accessor :watcher
 
         # @api zookeeper
-        # See {ZooKeeper#connect}
+        # See {ZooKeeper.connect}
         def initialize(addresses,options=nil)
             super()
             @addresses = parse_addresses(addresses)
@@ -136,12 +136,11 @@ module ZooKeeper
                     invoke_watch(@watcher,KeeperState::DISCONNECTED,nil,WatchEvent::NONE) if @watcher
                     @conn = nil
                 end
-                reconnect()
             end
         end
 
         # @api zookeeper
-        # See {ZooKeeper#connect}
+        # See {ZooKeeper.connect}
         def start(client)
             raise ProtocolError, "Already started!" unless @session_state.nil?
             @session_state = :disconnected
@@ -151,9 +150,15 @@ module ZooKeeper
             Strand.new { 
                 begin
                     reconnect()
+                    while active? 
+                        delay = rand() * @max_connect_delay
+                        Strand.sleep(delay)
+                        reconnect()
+                    end
                 rescue Exception => ex
                     logger.error("Exception in connect loop",ex)
                 end
+            logger.debug("Session complete")
             }
         end
 
@@ -189,10 +194,14 @@ module ZooKeeper
         end
 
         private
+        def active?
+            [:connected,:disconnected].include?(@session_state)
+        end
+
         def queue_request(request,op,opcode,response=nil,watch_type=nil,watcher=nil,ptype=Packet,&callback)
             synchronize do 
                 raise ProtocolError, "Client closed #{@client_state}" unless @client_state == :ready
-                raise Error.SESSION_EXPIRED, "Session has expired #{@session_state}" unless [:connected,:disconnected].include?(@session_state)
+                raise Error.SESSION_EXPIRED, "Session has expired #{@session_state}" unless active?
                 watch_type, watcher = resolve_watcher(watch_type,watcher)
 
                 xid = next_xid
@@ -206,10 +215,14 @@ module ZooKeeper
         def close_session(&callback)
             synchronize do
                 if @client_state == :ready
-                    if [:connected,:disconnected].include?(@session_state)
+                    if active?
                         # we keep the requested block in a close packet but we don't send it
-                        # until the next response, ping or disconnect, (to avoid race with read thread)
+                        # until we've received all pending reponses
                         @close_packet = ClosePacket.new(next_xid(),:close,-11,nil,nil,nil,nil,callback)
+
+                        # but we can force a response by sending a ping
+                        ping()
+                        
                     else
                         # We've already expired put the close callback on the event loop
                         @event_loop.invoke_close(callback,nil,true) 
@@ -260,9 +273,7 @@ module ZooKeeper
             #Rotate address
             host,port = @addresses.shift
             @addresses.push([host,port])
-            delay = rand() * @max_connect_delay
-            logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with delay=#{delay}, timeout=#{@connect_timeout}" } 
-            Strand.sleep(delay)
+            logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with timeout=#{@connect_timeout}" } 
             connect(host,port,@connect_timeout)
         end
 
@@ -509,7 +520,7 @@ module ZooKeeper
 
             def initialize(client)
                 @event_queue = Strand::Queue.new()
-                
+
                 @alive = true
                 @event_thread  = Strand.new() do
                     logger.debug { "Starting event loop" }

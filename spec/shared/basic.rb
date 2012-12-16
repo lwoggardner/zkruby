@@ -141,7 +141,7 @@ shared_examples_for "basic integration" do
     context "auto reconnect" do
 
         it "should stay connected" do
-            sleep(@zk.timeout * 2.0)
+            Strand.sleep(@zk.timeout * 2.0)
             @zk.exists?("/zkruby").should be_true
         end
 
@@ -175,6 +175,7 @@ shared_examples_for "basic integration" do
         end
 
         it "should handle a synchronous call inside an asynchronous callback" do
+            ZK.current.should equal(@zk)
             op = @zk.create("/zkruby/sync_async","somedata",ZK::ACL_OPEN_UNSAFE) do
                 ZK.current.should equal(@zk)
                 stat, data = @zk.get("/zkruby/sync_async")

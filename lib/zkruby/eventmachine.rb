@@ -30,12 +30,14 @@ module ZooKeeper
                 logger.warn("Exception in initialize",ex)
             end
 
+            # This "loop" is a means of keeping all the session activity
+            # on the session strand
             def read_loop()
                 event,*args = Fiber.yield
                 if (event == :connection_completed)
                     logger.debug("Connection completed")
                     session.prime_connection(self)
-                    
+
                     @timer = EM.add_timer(@connect_timeout) do
                         @fiber.resume(:connect_timer)
                     end
@@ -60,8 +62,8 @@ module ZooKeeper
                             end
                             ping += 1
                         when :receive_records
-                            ping = 0
                             packet_io = args[0]
+                            ping = 0
                             session.receive_records(packet_io)
                         when :unbind
                             break

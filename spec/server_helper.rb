@@ -9,12 +9,12 @@ module ZooKeeperServerHelper
     def jruby_safe_system(arg)
         arg = "#{arg} &" if JRUBY_COMPAT_SYSTEM
         system(arg)
-        sleep(3) if JRUBY_COMPAT_SYSTEM
+        Strand.sleep(3) if JRUBY_COMPAT_SYSTEM
     end
 
     def restart_cluster(delay=0)
         jruby_safe_system("../../bin/zkServer.sh stop >> zk.out")
-        Kernel::sleep(delay) if delay > 0
+        Strand::sleep(delay) if delay > 0
         jruby_safe_system("../../bin/zkServer.sh start >> zk.out")
     end
 
@@ -37,7 +37,7 @@ end
 include ZooKeeperServerHelper
 
 restart_cluster()
-sleep(3)
+Strand.sleep(3)
 require 'net/telnet'
 t = Net::Telnet.new("Host" => "localhost", "Port" => 2181)
 properties = t.cmd("mntr")

@@ -4,12 +4,6 @@
 # than calling the zk client libraries
 #
 module ZooKeeper
-    # Major/Minor numbers track zookeeper itself, final digit is our build number
-    VERSION = "3.4.4"
-    @bindings = []
-    def self.add_binding(binding)
-        @bindings << binding unless @bindings.include?(binding)
-    end
 end
 
 # Shorthand

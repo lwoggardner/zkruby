@@ -50,13 +50,13 @@ module Enumeration
 
     module ClassMethods
       
-        # @param [] ref Symbol, Fixnum or Enumeration
+        # @param [Symbol,Fixnum,Enumeration] ref 
         # @return [Enumeration] instance representing ref or nil if not found
         def get(ref)
             @enums[ref]
         end
 
-        # @param [] ref Symbol, Fixnum 
+        # @param [Symbol,Fixnum] ref 
         # @raise [KeyError] if ref not found
         # @return [Enumeration] 
         def fetch(ref)
