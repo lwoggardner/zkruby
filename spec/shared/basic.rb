@@ -52,6 +52,7 @@ shared_examples_for "basic integration" do
                 # only because JRuby 1.9 doesn't support the === syntax for exceptions
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/anunknownpath/
+                ex.message.should =~ /no_node/
                 skip = if defined?(JRUBY_VERSION) then 2 else 1 end
                 ex.backtrace[skip..-1].should == get_caller
             end
@@ -67,11 +68,13 @@ shared_examples_for "basic integration" do
             rescue ZooKeeper::Error => ex
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/an\/unknown\/path/
+                ex.message.should =~ /no_node/
                 ex.backtrace[1..-1].should == get_caller
             end
         end
 
         it "should call the error call back for asynchronous errors" do
+            get_caller = caller
             op = @zk.get("/an/unknown/path") do
                 :callback_invoked_unexpectedly
             end
@@ -79,6 +82,9 @@ shared_examples_for "basic integration" do
             op.on_error do |err|
                 case err
                 when ZK::Error::NO_NODE
+                    err.message.should =~ /\/an\/unknown\/path/
+                    err.message.should =~ /no_node/
+                    err.backtrace[1..-1].should == get_caller
                     :found_no_node_error
                 else
                     raise err

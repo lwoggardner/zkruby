@@ -108,13 +108,7 @@ module ZooKeeper
                 raise error if error
                 return result
             else
-                begin
-                    wait_value()
-                rescue ZooKeeper::Error => ex
-                    # Set the backtrace to the original caller, rather than the ZK event loop
-                    ex.set_backtrace(@backtrace) if @backtrace
-                    raise ex
-                end
+                wait_value()
             end
         end
         
@@ -156,6 +150,9 @@ module ZooKeeper
 
         def process_response(op_error,response)
             logger.debug { "Processing response #{op_error} #{response}" }
+            
+            # For ZooKeeper errors, set the backtrace to the original caller, rather than the ZK event loop
+            op_error.set_backtrace(@backtrace) if @backtrace && ZooKeeper::Error === op_error
             
             begin
                 return [ nil, callback.call(response) ] unless op_error

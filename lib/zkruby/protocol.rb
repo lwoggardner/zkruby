@@ -94,7 +94,7 @@ module ZooKeeper
             error = nil
             unless (Error::NONE === rc) then 
                 error = Error.lookup(rc) 
-                error = error.exception("ZooKeeper error for #{@op}(#{path}) ")
+                error = error.exception("ZooKeeper error #{error.to_sym} for #{@op}(#{path}) ")
             end
             [ callback, error ,response, watch_type ] 
         end
