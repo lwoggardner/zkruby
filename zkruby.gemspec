@@ -14,6 +14,7 @@ Gem::Specification.new do |s|
   s.description = %q{Supports full ZooKeeper API, synchronous or asynchronous style, watches etc.. with implementations over EventMachine or plain old Ruby IO/Threads}
 
   s.files         = `git ls-files`.split("\n")
+  s.files << 'lib/jute/zookeeper.rb'
   s.test_files    = `git ls-files -- {spec}/*`.split("\n")
   s.require_paths = ["lib"]
 
