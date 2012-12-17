@@ -39,7 +39,7 @@ module ZooKeeper::RubyIO
         include Slf4r::Logger
         include Socket::Constants
 
-        HAS_NONBLOCKING_CONNECT = RUBY_PLATFORM == "java" && Gem::Version.new(JRUBY_VERSION.dup) >= Gem::Version.new("1.6.7")
+        HAS_NONBLOCKING_CONNECT =  RUBY_PLATFORM != "java"|| Gem::Version.new(JRUBY_VERSION.dup) >= Gem::Version.new("1.6.7")
         SOL_TCP = IPPROTO_TCP unless defined? ::Socket::SOL_TCP
 
         attr_reader :session
@@ -66,16 +66,23 @@ module ZooKeeper::RubyIO
                   
                     begin
                         read,write,errors  = IO.select(nil, [sock], nil, timeout)
+                        optval = sock.getsockopt(Socket::SOL_SOCKET,Socket::SO_ERROR)
+                        sockerr = (optval.unpack "i")[0]
                     rescue Exception => ex
                         #JRuby raises Connection Refused instead of populating error array
-                        logger.warn { "Exception #{ex.inspect} from non blocking select" }
+                        logger.warn( "Exception from non blocking select", ex )
+                        sockerr=-1
                     end
-                    optval = sock.getsockopt(Socket::SOL_SOCKET,Socket::SO_ERROR)
-                    sockerr = (optval.unpack "i")[0]
+
                     if sockerr == Errno::NOERROR::Errno
-                        #Woohoo! we're connected (lots of example code here will call
-                        #connect_nonblock again to demonstrate EISCONN but I don't think
-                        #this is strictly necessary
+                        begin
+                            sock.connect_nonblock(sockaddr)
+                        rescue Errno::EISCONN
+                            #Woohoo! we're connected
+                        rescue Exception => ex
+                            logger.warn( "Exception after successful connect",ex )
+                            sock = nil
+                        end
                     else
                         if sockerr == Errno::ECONNREFUSED::Errno
                             logger.warn("Connection refused to #{ host }:#{ port }")
@@ -99,8 +106,12 @@ module ZooKeeper::RubyIO
                 end
             end
 
-            Thread.new(sock) { |sock| write_loop(sock) } 
-            read_loop(sock)
+            if sock
+                Thread.new(sock) { |sock| write_loop(sock) } 
+                read_loop(sock)
+                disconnect(sock)
+            end
+            session.disconnected()
         end
 
         # This is called from random client threads
@@ -113,7 +124,7 @@ module ZooKeeper::RubyIO
         def write_loop(socket)
             Thread.current[:name] = "ZooKeeper::RubyIO::WriteLoop"
             begin
-                while socket
+                until socket.closed?
                     data = @write_queue.pop()
                     if socket.write(data) != data.length()
                         #TODO - will this really ever happen
@@ -124,15 +135,16 @@ module ZooKeeper::RubyIO
                 logger.debug { "Write loop finished" }
             rescue Exception => ex
                 logger.warn("Exception in write loop",ex)
-                disconnect()
+                # Make sure we break out of the read loop
+                disconnect(socket)
             end
         end
 
         def read_loop(socket)
             Thread.current[:name] = "ZooKeeper::RubyIO::ReadLoop"
-            session.prime_connection(self) if socket
+            session.prime_connection(self) 
             ping = 0
-            while socket # effectively forever since we never break it from this end
+            until socket.closed?
                 begin
                     data = socket.read_nonblock(1024)
                     logger.debug { "Received (#{data.length})" + data.unpack("H*")[0] }
@@ -146,11 +158,13 @@ module ZooKeeper::RubyIO
                         case ping
                         when 1 ;  session.ping()
                         when 2
-                            logger.debug{"No response to ping in #{session.ping_interval}*2"}
+                            logger.warn{"No response to ping in #{session.ping_interval}*2"}
                             break
                         end
                     end
                 rescue EOFError
+                    # This is how we expect to end - send a close packet and the
+                    # server closes the socket
                     logger.debug { "EOF reading from socket" }
                     break
                 rescue Exception => ex
@@ -158,8 +172,6 @@ module ZooKeeper::RubyIO
                     break
                 end
             end
-            disconnect(socket)
-            session.disconnected()
         end
 
         # @api protocol
@@ -169,7 +181,7 @@ module ZooKeeper::RubyIO
 
         private
         def disconnect(socket)
-            socket.close if socket
+            socket.close if socket and !socket.closed?
         rescue Exception => ex
             #oh well
             logger.debug("Exception closing socket",ex)
