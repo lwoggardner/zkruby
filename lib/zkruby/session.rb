@@ -1,7 +1,6 @@
 require 'set'
-require 'strand'
-require 'strand/monitor'
-#TODO Move async_op into this file
+require 'thread'
+require 'monitor'
 require 'zkruby/async_op'
 module ZooKeeper
 
@@ -9,8 +8,6 @@ module ZooKeeper
     #
     # @note this is a private API not intended for client use
     class Session
-        # TODO this class is too big
-
         # There are multiple threads of execution involved in a session
         # Client threads - send requests
         # Connection/Read thread
@@ -23,7 +20,7 @@ module ZooKeeper
         # conjunction with processing all entries in @pending_queue
         #
         # All interaction with the event loop occurs via a Queue
-        include Strand::MonitorMixin
+        include MonitorMixin
 
         DEFAULT_TIMEOUT = 4
         DEFAULT_CONNECT_DELAY = 0.2
@@ -115,8 +112,7 @@ module ZooKeeper
             end
         end
 
-        # @api connection
-        # called when the connection has dropped from either end
+        # TODO: Merge all this into a connect loop called from start
         def disconnected()
             logger.info { "Disconnected id=#{@session_id}, keeper=:#{@session_state}, client=:#{@client_state}" }
 
@@ -145,20 +141,18 @@ module ZooKeeper
             raise ProtocolError, "Already started!" unless @session_state.nil?
             @session_state = :disconnected
             @disconnect_time = Time.now
-            logger.debug("Starting new zookeeper client session")
+            logger.debug("Starting new zookeeper client session for #{client}")
             @event_loop = EventLoop.new(client)
-            Strand.new { 
-                begin
+            # This is the read/connect thread
+            Thread.new {
+                Thread.current[:name] = "ZK::Session #{self}"
+                reconnect()
+                while active?
+                    delay = rand() * @max_connect_delay
+                    sleep(delay)
                     reconnect()
-                    while active? 
-                        delay = rand() * @max_connect_delay
-                        Strand.sleep(delay)
-                        reconnect()
-                    end
-                rescue Exception => ex
-                    logger.error("Exception in connect loop",ex)
                 end
-            logger.debug("Session complete")
+                logger.debug("Session complete")
             }
         end
 
@@ -196,6 +190,11 @@ module ZooKeeper
         private
         def active?
             [:connected,:disconnected].include?(@session_state)
+        end
+
+        def calculate_timeouts()
+            @ping_interval = timeout * 2.0/7.0
+            @connect_timeout = timeout / 2.0
         end
 
         def queue_request(request,op,opcode,response=nil,watch_type=nil,watcher=nil,ptype=Packet,&callback)
@@ -262,8 +261,8 @@ module ZooKeeper
 
         def parse_options(options)
             @timeout = options.fetch(:timeout,DEFAULT_TIMEOUT)
+            calculate_timeouts()
             @max_connect_delay = options.fetch(:connect_delay,DEFAULT_CONNECT_DELAY)
-            @connect_timeout = options.fetch(:connect_timeout,@timeout * 1.0 / 7.0)
             @scheme = options.fetch(:scheme,nil)
             @auth = options.fetch(:auth,nil)
             @chroot = options.fetch(:chroot,"").chomp("/")
@@ -273,8 +272,14 @@ module ZooKeeper
             #Rotate address
             host,port = @addresses.shift
             @addresses.push([host,port])
-            logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with timeout=#{@connect_timeout}" } 
-            connect(host,port,@connect_timeout)
+            logger.debug { "Connecting id=#{@session_id} to #{host}:#{port} with timeout=#{@connect_timeout} #{ZooKeeperBinding.inspect}" } 
+            begin
+                ZooKeeperBinding.connect(self,host,port,@connect_timeout)
+            rescue Exception => ex
+                logger.warn("Exception in connect loop", ex)
+            ensure
+                disconnected()
+            end
         end
 
         def session_expired(reason=:expired)
@@ -297,9 +302,10 @@ module ZooKeeper
                 session_expired() 
             else
                 @timeout = result.time_out.to_f / 1000.0
+                calculate_timeouts()
                 @session_id = result.session_id
                 @session_passwd = result.passwd
-                logger.info { "Connected session_id=#{@session_id}, timeout=#{@time_out}, ping=#{@ping_interval}" }
+                logger.info { "Connected session_id=#{@session_id}, timeout=#{@timeout}, ping=#{@ping_interval}" }
 
                 # Why 2 / 7 of the timeout?. If a binding sees no server response in this period it is required to
                 # generate a ping request
@@ -386,13 +392,11 @@ module ZooKeeper
 
                 if (packet.xid.to_i != header.xid.to_i)
 
-                    logger.error { "Bad XID! expected=#{packet.xid}, received=#{header.xid}" }
-
                     # Treat this like a dropped connection, and then force the connection
                     # to be dropped. But wait for the connection to notify us before
                     # we actually update our keeper_state
                     invoke_response(*packet.error(:disconnected))
-                    @conn.disconnect() 
+                    raise ProtocolError, "Bad XID. expected=#{packet.xid}, received=#{header.xid}"
                 else
                     @last_zxid_seen = header.zxid
 
@@ -435,7 +439,7 @@ module ZooKeeper
             elsif watch.respond_to?(:call)
                 callback = watch
             else
-                raise ProtocolError("Bad watcher #{watch}")
+                logger.error("Bad watcher #{watch}")
             end
             @event_loop.invoke(callback,state,unchroot(path),event)
         end
@@ -458,7 +462,7 @@ module ZooKeeper
             # client requests are rejected
             # we can receive watch and ping notifications after this
             # but the server drops the connection as soon as this
-            # packet arrives
+            # packet is received
             if @pending_queue.empty? && @session_state == :connected && @close_packet
                 logger.debug { "Sending close packet!" }
                 send_packet(@close_packet)
@@ -519,16 +523,16 @@ module ZooKeeper
             include Slf4r::Logger
 
             def initialize(client)
-                @event_queue = Strand::Queue.new()
+                @event_queue = Queue.new()
 
                 @alive = true
-                @event_thread  = Strand.new() do
+                @event_thread  = Thread.new() do
                     logger.debug { "Starting event loop" }
-                    Strand.current[:name] = "ZooKeeper::EventLoop"
-                    Strand.current[CURRENT] = [ client ]
+                    Thread.current[:name] = "ZK::EventLoop #{self}"
+                    Thread.current[CURRENT] = [ client ]
                     begin
                         pop_event_queue until dead?
-                        logger.debug { "Finished event loop" }
+                        logger.info { "Finished event loop" }
                     rescue Exception => ex
                         logger.error("Uncaught exception in event loop",ex)
                     end
@@ -542,7 +546,8 @@ module ZooKeeper
             # @api async_op
             def pop_event_queue
                 #We're alive until we get a nil result from #stop
-                queued = @event_queue.pop if @alive
+                logger.debug { "Popping event queue" }
+                queued = @alive ? @event_queue.pop : nil
                 if queued 
                     begin
                         callback,*args = queued
@@ -561,7 +566,7 @@ module ZooKeeper
             end
 
             def invoke_close(callback,*args)
-                Strand.new do
+                Thread.new do
                     @event_thread.join()
                     callback.call(*args)
                 end
@@ -570,11 +575,12 @@ module ZooKeeper
             # @api session
             def stop
                 @event_queue.push(nil)
+                @event_thread.join()
             end
 
             # @api async_op
             def current?
-                Strand.current == @event_thread
+                Thread.current == @event_thread
             end
         end
     end # Session

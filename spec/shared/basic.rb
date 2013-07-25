@@ -4,8 +4,10 @@ shared_examples_for "basic integration" do
          @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE) unless @zk.exists?("/zkruby")
     end
 
+    context("normal functions") do
     it "should return a stat for the root path" do
-        stat = @zk.stat("/")
+
+        stat = @zk.stat("/") 
         stat.should be_a ZooKeeper::Data::Stat
     end
 
@@ -40,7 +42,7 @@ shared_examples_for "basic integration" do
         @zk.delete("/zkruby/rspec",-1)
         @zk.exists?("/zkruby/rspec").should be_false
     end
-
+    end
     context "exceptions" do
 
         it "should raise ZK::Error for synchronous method" do
@@ -147,7 +149,7 @@ shared_examples_for "basic integration" do
     context "auto reconnect" do
 
         it "should stay connected" do
-            Strand.sleep(@zk.timeout * 2.0)
+            sleep(@zk.timeout * 2.0)
             @zk.exists?("/zkruby").should be_true
         end
 

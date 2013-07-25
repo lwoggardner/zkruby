@@ -32,11 +32,11 @@ module Enumeration
         end
 
         def |(num)
-            to_int | num
+            @index | num
         end
 
         def &(num)
-            to_int & num
+            @index & num
         end
 
         def to_sym
@@ -45,6 +45,10 @@ module Enumeration
 
         def to_s
             "#{super} (:#{@name} [#{@index}])"
+        end
+
+        def coerce(other)
+            [self,other]
         end
     end
 

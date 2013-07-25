@@ -15,6 +15,7 @@ require 'zkruby/bindata'
 require 'jute/zookeeper'
 require 'zkruby/multi'
 require 'zkruby/protocol'
+require 'zkruby/conn'
 require 'zkruby/session'
 require 'zkruby/client'
 # Utilities

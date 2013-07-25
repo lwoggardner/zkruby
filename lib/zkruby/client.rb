@@ -117,26 +117,14 @@ module ZooKeeper
     # @return [Client] 
     def self.connect(addresses,options={},&block)
 
-        binding_module = if Strand.event_machine?                 
-            require 'zkruby/eventmachine'
-            ZooKeeper::EventMachine::Binding
-        else
-            require 'zkruby/rubyio'
-            ZooKeeper::RubyIO::Binding
-        end
-
-        logger.debug { "Using binding #{binding_module}" }
         session = Session.new(addresses,options)
-        # Extend the appropriate #connect method into the session
-        session.extend(binding_module)
-
         client = Client.new(session)
 
         session.start(client)
         
         return client unless block_given?
 
-        storage = Strand.current[CURRENT] ||= []
+        storage = Thread.current[CURRENT] ||= []
         storage.push(client)
         begin
             yield client
@@ -151,13 +139,12 @@ module ZooKeeper
     # current ZK client
     def self.current
         #We'd use if key? here if strand supported it
-        Strand.current[CURRENT].last if Strand.current[CURRENT]
+        Thread.current[CURRENT].last if Thread.current.key?(CURRENT)
     end
 
     # Allow ZK a chance to send its data/ping
-    # particularly required for the eventmachine binding
     def self.pass
-        Strand.pass
+        Thread.pass
     end
 
     class WatchEvent

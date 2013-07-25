@@ -1,8 +1,8 @@
 require 'server_helper'
 require 'shared/binding'
-require 'zkruby/rubyio'
 
-describe ZooKeeper::RubyIO::Binding do
+describe ZooKeeperBinding do
+    let (:pass_every) { 100 }
     it_behaves_like "a zookeeper client binding"
 end
 

@@ -71,7 +71,6 @@ module ZooKeeper
 
         def path
             #Every request has a path!
-            #TODO - path may be chrooted!
             request.path if request.respond_to?(:path)
         end
     end

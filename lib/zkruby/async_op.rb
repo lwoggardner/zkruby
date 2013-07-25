@@ -30,7 +30,7 @@ module ZooKeeper
             @event_loop = event_loop
             @operation = operation
             @callback = callback
-            @mutex,@cv = Strand::Mutex.new(), Strand::ConditionVariable.new()
+            @mutex,@cv = Mutex.new(), ConditionVariable.new()
             begin
                 execute()
             rescue ZooKeeper::Error => ex
@@ -181,7 +181,8 @@ module ZooKeeper
                     event_loop.pop_event_queue()
                 end
             else
-                mutex.synchronize { 
+                mutex.synchronize {
+                    logger.debug("Async op is waiting")
                     cv.wait(mutex) unless resumed?
                 }
             end

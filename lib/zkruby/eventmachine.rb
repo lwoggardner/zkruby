@@ -1,16 +1,14 @@
 require 'eventmachine'
+require 'empathy'
 
 if defined?(JRUBY_VERSION) && JRUBY_VERSION =~ /1\.6\.5.*/
     raise "Fibers are broken in JRuby 1.6.5 (See JRUBY-6170)"
 end
 
-# Tell Strand that we want to consider event machine
-Strand.reload()
-
 module ZooKeeper
     module EventMachine
 
-        class ClientConn < ::EM::Connection
+        class Connection < ::EM::Connection
             include Protocol
             include Slf4r::Logger        
 
@@ -31,34 +29,37 @@ module ZooKeeper
             end
 
             # This "loop" is a means of keeping all the session activity
-            # on the session strand
+            # on the session fiber
             def read_loop()
                 event,*args = Fiber.yield
                 if (event == :connection_completed)
                     logger.debug("Connection completed")
                     session.prime_connection(self)
 
-                    @timer = EM.add_timer(@connect_timeout) do
-                        @fiber.resume(:connect_timer)
+                    @timer = ::EventMachine.add_timer(session.ping_interval) do
+                        resume(:connect_timer)
                     end
 
                     ping = 0
+                    unbound = false
                     # If session sleeps or waits in here then our yield/resumes are going to get out of sync
-                    while true
+                    until unbound
                         event,*args = Fiber.yield
+                        logger.debug { "Received event #{event} with #{args}" }
                         case event
                         when :connect_timer
                             if session.connected?
-                                @timer = EM.add_periodic_timer(session.ping_interval) do
-                                    @fiber.resume(:ping_timer)
+                                @timer = ::EventMachine.add_periodic_timer(session.ping_interval) do
+                                    resume(:ping_timer) 
                                 end
                             else
-                                close_connection()
+                                logger.warn("Connection timed out")
+                                break;
                             end
                         when :ping_timer
                             case ping
                             when 1 then session.ping
-                            when 2 then close_connection
+                            when 2 then break;
                             end
                             ping += 1
                         when :receive_records
@@ -66,44 +67,55 @@ module ZooKeeper
                             ping = 0
                             session.receive_records(packet_io)
                         when :unbind
-                            break
+                            unbound = true
+                        else
+                            logger.error("Unexpected resume - #{event}")
+                            break;
                         end
                     end
                 end
-                EM.cancel_timer(@timer) if @timer
-                session.disconnected
+            ensure
+                @fiber = nil
+                ::EventMachine.cancel_timer(@timer) if @timer
+                close_connection() unless unbound
             end
 
             def connection_completed()
-                @fiber.resume(:connection_completed)
-            rescue Exception => ex
-                logger.error("Exception in connection_completed",ex)
+                resume(:connection_completed)
             end
 
             def receive_records(packet_io)
-                @fiber.resume(:receive_records,packet_io)
+                resume(:receive_records,packet_io)
+            end
+
+            def unbind(reason)
+                logger.warn{"Connection #{self} unbound due to #{reason}"} if reason
+                resume(:unbind)
+            end
+
+            private
+            def resume(event,*args)
+                @fiber.resume(event,*args) if @fiber
             rescue Exception => ex
-                logger.error("Exception in receive_records",ex)
+                logger.error("Exception resuming #{@fiber} for event #{event}",ex)
             end
-
-            def disconnect()
-                close_connection()
-            end
-
-            def unbind
-                @fiber.resume(:unbind)
-            rescue Exception => ex
-                logger.error("Exception in unbind",ex)
-            end
-
         end
+    end #module EventMachine
 
-        module Binding
-            def connect(host,port,timeout)
-                conn = EM.connect(host,port,ZooKeeper::EventMachine::ClientConn,self,timeout)
+end #module ZooKeeper
+
+module Empathy
+
+    module EM
+        module ZooKeeperBinding
+            def self.connect(session,host,port,timeout)
+                conn = ::EventMachine.connect(host,port,ZooKeeper::EventMachine::Connection,session,timeout)
                 conn.read_loop
             end
         end #class Binding
+    end #module EM
 
-    end #module EventMachine
-end #module ZooKeeper
+    create_delegate_module('ZooKeeperBinding',:connect)
+
+end #module Empathy
+

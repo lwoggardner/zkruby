@@ -1,29 +1,21 @@
 require 'server_helper'
-require 'shared/binding'
 require 'zkruby/eventmachine'
+require 'shared/binding'
 
-describe ZooKeeper::EventMachine::Binding do
+Empathy.empathise(ZooKeeper)
+
+describe Empathy::EM::ZooKeeperBinding do
 
     include Slf4r::Logger
 
     around(:each) do |example|
-        EventMachine.run {
-            Strand.new() do
-            begin
-                example.run
-            rescue Exception => ex
-                logger.error("Exception in example",ex)
-            ensure
-                EM::stop
-            end
-            end
-        }
+        Empathy.run { example.run }
     end
 
     it "should be running in event machine" do
-        Strand.event_machine?.should be_true
+        Empathy.event_machine?.should be_true
     end
 
+    let (:pass_every) { 3 }
     it_should_behave_like "a zookeeper client binding"
-
 end
