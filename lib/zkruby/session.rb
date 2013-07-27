@@ -141,7 +141,7 @@ module ZooKeeper
             raise ProtocolError, "Already started!" unless @session_state.nil?
             @session_state = :disconnected
             @disconnect_time = Time.now
-            logger.debug("Starting new zookeeper client session for #{client}")
+            logger.debug {"Starting new zookeeper client session for #{client}"}
             @event_loop = EventLoop.new(client)
             # This is the read/connect thread
             Thread.new {
@@ -152,7 +152,7 @@ module ZooKeeper
                     sleep(delay)
                     reconnect()
                 end
-                logger.debug("Session complete")
+                logger.debug {"Session #{self} complete" }
             }
         end
 

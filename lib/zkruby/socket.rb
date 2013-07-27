@@ -10,7 +10,6 @@ class Socket
             # TODO: This is a blocking DNS lookup!!!!, possibly even a reverse lookup if host is a numberic address
             addr = self.getaddrinfo(host, nil)
             sock = Socket.new(self.const_get(addr[0][0]), Socket::SOCK_STREAM, 0)
-
             sockaddr = Socket.pack_sockaddr_in(port, addr[0][3])
 
             begin
@@ -35,7 +34,7 @@ class Socket
                     end
                 when Errno::EINPROGRESS
                     # must be a timeout
-                    logger.debug("Connect timeout")
+                    logger.warn{"Connect timeout to #{host}:#{port}"}
                     return nil
                 when Errno::ECONNREFUSED::Errno
                     raise Errno::ECONNREFUSED, "Connection refused to #{ host }:#{ port }"

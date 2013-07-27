@@ -14,16 +14,21 @@ module ZooKeeper
         def run(host,port,timeout)
             @write_queue = Queue.new()
 
-            sock = Socket.tcp_connect_timeout(host,port,timeout)
-            sock.sync=true
-            write_thread = Thread.new(sock) { |sock| write_loop(sock) } 
             begin
-                session.prime_connection(self)
-                read_loop(sock)
-            ensure
-                disconnect(sock)
+                sock = Socket.tcp_connect_timeout(host,port,timeout)
+                sock.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+                sock.sync=true
+                write_thread = Thread.new(sock) { |sock| write_loop(sock) } 
+                begin
+                    session.prime_connection(self)
+                    read_loop(sock)
+                ensure
+                    disconnect(sock)
+                end
+                write_thread.join
+            rescue Errno::ECONNREFUSED
+                logger.warn{"Connection refused to #{host}:#{port}"}
             end
-            write_thread.join
         end
 
         # This is called from random client threads (including the event loop)
@@ -44,8 +49,8 @@ module ZooKeeper
                 end
                 logger.debug { "Write loop finished" }
             rescue Exception => ex
-                logger.warn("Exception in write loop",ex)
-               # Make sure we break out of the read loop
+                logger.warn( "Exception in write loop",ex )
+                # Make sure we break out of the read loop
                 disconnect(socket)
             end
         end
@@ -54,7 +59,7 @@ module ZooKeeper
             ping = 0
             until socket.closed?
                 begin
-                    data = socket.read_timeout(2048,session.ping_interval)
+                    data = socket.read_timeout(512,session.ping_interval)
                     if data.nil?
                         logger.debug { "Read timed out" }
                         ping += 1
@@ -94,10 +99,10 @@ module ZooKeeper
 end
 
 module ZooKeeperBinding
-  
-  # connect and read from the socket until disconnected
-  def self.connect(session,host,port,timeout)
-     ZooKeeper::Connection.new(session).run(host,port,timeout)
-  end
+
+    # connect and read from the socket until disconnected
+    def self.connect(session,host,port,timeout)
+        ZooKeeper::Connection.new(session).run(host,port,timeout)
+    end
 end
 
