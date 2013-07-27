@@ -24,6 +24,8 @@ describe Enumeration do
         t.should === 1
     end
 
+    it "should do coercion"
+
     it "should be useable in a mock" do
         m = mock("watchevent")
         m.should_receive(:test).with(TestEnum::TWO)

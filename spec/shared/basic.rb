@@ -4,8 +4,10 @@ shared_examples_for "basic integration" do
          @zk.create("/zkruby","node for zk ruby testing",ZK::ACL_OPEN_UNSAFE) unless @zk.exists?("/zkruby")
     end
 
+    context("normal functions") do
     it "should return a stat for the root path" do
-        stat = @zk.stat("/")
+
+        stat = @zk.stat("/") 
         stat.should be_a ZooKeeper::Data::Stat
     end
 
@@ -40,7 +42,7 @@ shared_examples_for "basic integration" do
         @zk.delete("/zkruby/rspec",-1)
         @zk.exists?("/zkruby/rspec").should be_false
     end
-
+    end
     context "exceptions" do
 
         it "should raise ZK::Error for synchronous method" do
@@ -52,6 +54,7 @@ shared_examples_for "basic integration" do
                 # only because JRuby 1.9 doesn't support the === syntax for exceptions
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/anunknownpath/
+                ex.message.should =~ /no_node/
                 skip = if defined?(JRUBY_VERSION) then 2 else 1 end
                 ex.backtrace[skip..-1].should == get_caller
             end
@@ -67,11 +70,13 @@ shared_examples_for "basic integration" do
             rescue ZooKeeper::Error => ex
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/an\/unknown\/path/
+                ex.message.should =~ /no_node/
                 ex.backtrace[1..-1].should == get_caller
             end
         end
 
         it "should call the error call back for asynchronous errors" do
+            get_caller = caller
             op = @zk.get("/an/unknown/path") do
                 :callback_invoked_unexpectedly
             end
@@ -79,6 +84,9 @@ shared_examples_for "basic integration" do
             op.on_error do |err|
                 case err
                 when ZK::Error::NO_NODE
+                    err.message.should =~ /\/an\/unknown\/path/
+                    err.message.should =~ /no_node/
+                    err.backtrace[1..-1].should == get_caller
                     :found_no_node_error
                 else
                     raise err
@@ -175,6 +183,7 @@ shared_examples_for "basic integration" do
         end
 
         it "should handle a synchronous call inside an asynchronous callback" do
+            ZK.current.should equal(@zk)
             op = @zk.create("/zkruby/sync_async","somedata",ZK::ACL_OPEN_UNSAFE) do
                 ZK.current.should equal(@zk)
                 stat, data = @zk.get("/zkruby/sync_async")

@@ -32,11 +32,11 @@ module Enumeration
         end
 
         def |(num)
-            to_int | num
+            @index | num
         end
 
         def &(num)
-            to_int & num
+            @index & num
         end
 
         def to_sym
@@ -46,17 +46,21 @@ module Enumeration
         def to_s
             "#{super} (:#{@name} [#{@index}])"
         end
+
+        def coerce(other)
+            [self,other]
+        end
     end
 
     module ClassMethods
       
-        # @param [] ref Symbol, Fixnum or Enumeration
+        # @param [Symbol,Fixnum,Enumeration] ref 
         # @return [Enumeration] instance representing ref or nil if not found
         def get(ref)
             @enums[ref]
         end
 
-        # @param [] ref Symbol, Fixnum 
+        # @param [Symbol,Fixnum] ref 
         # @raise [KeyError] if ref not found
         # @return [Enumeration] 
         def fetch(ref)

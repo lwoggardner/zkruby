@@ -18,7 +18,7 @@ shared_examples_for "watches" do
             stat,data = @zk.get(path,watch)
             # set the data on the 2nd session
             @zk2.set(path,"newdata",stat.version)
-            sleep(5)
+            sleep(2)
             watch_results.size().should == 1
             watch_results[0][1].should == path
             watch_results[0][2].should === :node_data_changed
@@ -31,7 +31,7 @@ shared_examples_for "watches" do
 
             stat,children = @zk.children("/zkruby",watch)
             path = @zk2.create("/zkruby/rspec_watch","somedata",ZK::ACL_OPEN_UNSAFE,:ephemeral,:sequential)
-            sleep(5)
+            sleep(2)
             watch_results.size().should == 1
             watch_results[0][1].should == "/zkruby"
             watch_results[0][2].should === :node_children_changed

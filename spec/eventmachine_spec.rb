@@ -1,50 +1,21 @@
 require 'server_helper'
-require 'shared/binding'
 require 'zkruby/eventmachine'
+require 'shared/binding'
 
-module EMHelper
-    alias :restart_cluster_orig :restart_cluster
-    def restart_cluster(delay=0)
-        if EM.reactor_running?
-                cv = Strand::ConditionVariable.new()
-                op = Proc.new do
-                    begin
-                        restart_cluster_orig(delay)
-                    rescue Exception => ex
-                        logger.error ("Exception restarting cluster #{ex}")
-                    end
-                    true
-                end
-                cb = Proc.new { |result| cv.signal() } 
-                defer = EM.defer(op,cb)
-                cv.wait()
-        else
-            restart_cluster_orig(delay)
-        end
-    end
+Empathy.empathise(ZooKeeper)
 
-    def sleep(delay)
-        Strand.sleep(delay)
-    end
-end
-
-describe ZooKeeper::EventMachine::Binding do
+describe Empathy::EM::ZooKeeperBinding do
 
     include Slf4r::Logger
-    include EMHelper
 
     around(:each) do |example|
-        EventMachine.run {
-            Strand.new() do
-               begin
-                example.run
-               ensure
-                EM::stop
-               end
-            end
-        }
+        Empathy.run { example.run }
     end
 
-    it_should_behave_like "a zookeeper client binding"
+    it "should be running in event machine" do
+        Empathy.event_machine?.should be_true
+    end
 
+    let (:pass_every) { 3 }
+    it_should_behave_like "a zookeeper client binding"
 end

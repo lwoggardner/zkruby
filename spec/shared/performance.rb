@@ -5,20 +5,19 @@ shared_examples_for "performance" do
         it "should create and retrieve lots of nodes in a reasonable amount of time" do
 
             path = "/zkruby/rspec-perf"
+
+            @zk.mkpath(path)
+
             op = nil
             start = Time.now
             count = 0
-            pass_every = 10
             first_error = true
             6000.times do
                 count += 1
                 this_index = count
                 op = @zk.create("#{path}/","hello", ZK::ACL_OPEN_UNSAFE,:sequential,:ephemeral) { } 
                 op.on_error { |ex| puts "Error @ #{this_index}" if first_error; first_error = false }
-                if count % pass_every == 0
-                    #puts "Passing @ #{count}"
-                    ZK.pass
-                end
+                ZK.pass if pass_every && count % pass_every == 0
             end
 
             op.value
@@ -31,10 +30,7 @@ shared_examples_for "performance" do
             children.each do |child|
                 op = @zk.get("#{path}/#{child}") { }
                 count += 1
-                if count % pass_every == 0
-                    #puts "Passing @ #{count}"
-                    ZK.pass
-                end
+                ZK.pass if pass_every && count % pass_every == 0
             end
 
             op.value

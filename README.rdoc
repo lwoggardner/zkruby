@@ -1,6 +1,6 @@
 = zkruby
 
-* https://github.com/lwoggardner/zkruby
+* http://rubygems.org/gems/zkruby
 
 == DESCRIPTION:
 
@@ -10,6 +10,9 @@ Pure ruby client for ZooKeeper (http://zookeeper.apache.org)
 
 Supports full ZooKeeper API, synchronous or asynchronous style, watches etc.. with implementations over EventMachine or plain old Ruby IO/Threads
 
+Other ruby libraries for zookeeper tend to use the underlying C/Java client libraries while zkruby
+implements the zookeeper wire protocol directly.
+
 Advantages:
 * Rubyist API - with block is asynchronous, without block is synchronous
 * Avoids conflicts between various Ruby threading models and the C/Java apis
@@ -18,9 +21,9 @@ Advantages:
 
 Disadvantages:
 * Duplicated code from Java/C libraries, particularly around herd effect protection
-* Maintain in parallel with breaking changes in protocol which are possibly more likely 
-  than breaking changes in the client API
-* Probably not as optimised in terms of performance (but your client code is ruby anyway) 
+* Needs to keep up with changes in wire protocol which are possibly more likely 
+  than changes in the client API
+* Possibly not as optimised in terms of performance (but your client code is ruby anyway) 
 * Not production tested (yet- do you want to be the first?)  
 
 == SYNOPSIS:
@@ -77,27 +80,27 @@ Disadvantages:
 
 == DEVELOPERS:
 
-Checkout the zookeeper source from http://zookeeper.apache.org
+Download ZooKeeper from http://zookeeper.apache.org
 
-Checkout the zkruby source into the contrib directory  
+Create a conf/zoo.cfg file (copying sample.zoo.cfg is fine)
 
-Install hoe
+Checkout the zkruby source into the contrib directory
 
-  $ (sudo) gem install hoe 
+Copy (if different) src/zookeeper.jute to contrib/zkruby/src/zookeeper.jute
 
-Install other dependencies
+Get gem dependencies
 
-  $ rake check_extra_deps
+  $ bundle install 
 
 Generate docs and run the tests/specs
 
-  $ rake newb
+  $ rake 
 
 == LICENSE:
 
 (The MIT License)
 
-Copyright (c) 2011 
+Copyright (c) 2012 Grant Gardner
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
