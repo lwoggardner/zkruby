@@ -37,6 +37,25 @@ shared_examples_for "basic integration" do
         @zk.exists?("/zkruby/rspec").should be_false
     end
 
+    it "should differentiate null data from empty strings" do
+        path = @zk.create("/zkruby/rspec",nil,ZK::ACL_OPEN_UNSAFE,:ephemeral)
+        stat,data = @zk.get(path)
+        data.should be_nil
+        # this isn't very helpful
+        stat.data_length.should == 0
+
+        @zk.set(path,"",-1)
+        stat,data = @zk.get(path)
+        data.should == ""
+        stat.data_length.should == 0
+
+        @zk.set(path,nil,-1)
+        stat,data = @zk.get(path)
+        data.should be_nil
+        # this isn't very helpful
+        stat.data_length.should == 0
+    end
+
     it "should accept -1 to delete any version" do
         path = @zk.create("/zkruby/rspec","someData",ZK::ACL_OPEN_UNSAFE,:ephemeral)
         @zk.delete("/zkruby/rspec",-1)

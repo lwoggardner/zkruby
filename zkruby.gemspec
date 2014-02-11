@@ -21,7 +21,7 @@ Gem::Specification.new do |s|
   # Yard options in .yardopts
 
   s.add_dependency 'slf4r' , '~> 0.4.2'
-  s.add_dependency 'bindata', '~> 1.4.1'
+  s.add_dependency 'bindata', '~> 1.8.2'
 
   s.add_development_dependency 'eventmachine', '>= 0.12.10'
   s.add_development_dependency 'empathy', '>=0.1.0'

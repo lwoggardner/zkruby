@@ -333,7 +333,7 @@ module ZooKeeper
             req = Proto::GetDataRequest.new(:path => path, :watch => watch)
 
             queue_request(req,:get,4,Proto::GetDataResponse,:data,watch) do | response |
-                blk.call( response.stat, response.data.to_s)
+                blk.call( response.stat, response.data.value)
             end
         end
 

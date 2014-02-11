@@ -5,6 +5,48 @@ class ZKBTest < BinData::Record
     zk_boolean :bool
 end
 
+class ZKBufferTest < BinData::Record
+    zk_buffer :buff
+end
+class ZKStringTest < BinData::Record
+    zk_string :str
+end
+
+describe ZK::ZKBuffer do
+
+    it "should read null values" do
+        hex = "ffffffff"
+        bin = [ hex ].pack("H*")
+        
+        buffer = ZKBufferTest.read(bin)
+
+        buffer.buff.should == nil
+        buffer.buff.value.should be_nil
+    end
+
+    it "should write null values" do
+        buffer = ZK::ZKBuffer.new(nil)
+        buffer.value.should be_nil
+        buffer.to_binary_s.should == [ "ffffffff" ].pack("H*")
+    end
+
+    it "should read non null values as binary strings"
+    it "should write non null values"
+    it "should write encoded calues as binary strings"
+end
+
+describe ZK::ZKString do
+    it "should produce UTF8 encoded strings" do
+       
+        hex = "000000086162636465666768"  
+        bin = [ hex ].pack("H*")
+        zk_string = ZKStringTest.read(bin)
+        zk_string.str.should == "abcdefgh"
+        zk_string.str.encoding.name.should == "UTF-8"
+
+    end
+end
+
 describe ZK::ZKBoolean do
 
     it "should behave like 'false' after reading 00" do

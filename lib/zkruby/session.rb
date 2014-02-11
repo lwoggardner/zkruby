@@ -329,7 +329,7 @@ module ZooKeeper
             req = Proto::ConnectRequest.new( :timeout => timeout )
             req.last_zxid_seen = @last_zxid_seen if @last_zxid_seen
             req.session_id =  @session_id if @session_id
-            req.passwd = @session_passwd if @session_passwd
+            req.passwd = @session_passwd || ""
             conn.send_records(req)
         end
 

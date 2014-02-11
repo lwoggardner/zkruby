@@ -2,22 +2,31 @@
 require 'bindata'
 module ZooKeeper
 
-    class ZKBuffer < BinData::Primitive
-        int32be  :len,  :value => lambda { data.nil? ? -1 : data.length }
-        string :data, :read_length => :len
+    class ZKBuffer < BinData::BasePrimitive
 
-        def get;   self.data; end
-        def set(v) self.data = v; end
+        def value_to_binary_string(v)
+            vlen = v.nil? ? -1 : v.length
+            [ vlen, v ].pack("NA*")
+        end
+
+        def read_and_return_value(io)
+            vlen = io.readbytes(4).unpack("i!>")[0]
+            vlen < 0 ? nil : io.readbytes(vlen)
+        end
+
+        def sensible_default
+            nil
+        end
     end
 
-    class ZKString < BinData::Primitive
-        int32be  :len,  :value => lambda { data.nil? ? -1 : data.length }
-        string :data, :read_length => :len
+    class ZKString < ZKBuffer
+        def read_and_return_value(io)
+            value = super
+            value.force_encoding('UTF-8') unless value.nil?
+        end
 
-        def get;   self.data; end
-        def set(v) self.data = v; end
-        def snapshot
-            super.force_encoding('UTF-8')
+        def sensible_default
+            ""
         end
     end
 
