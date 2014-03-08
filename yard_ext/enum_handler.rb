@@ -2,7 +2,7 @@ require 'yard'
 
 
 class EnumConstantHandler < YARD::Handlers::Ruby::ConstantHandler
-  # Bug in YARD means negative constants are not shown properly. 
+  # Bug in YARD means negative constants are not shown properly.
   handles method_call(:enum)
   namespace_only
   def process

@@ -2,120 +2,105 @@ require 'eventmachine'
 require 'empathy'
 
 if defined?(JRUBY_VERSION) && JRUBY_VERSION =~ /1\.6\.5.*/
-    raise "Fibers are broken in JRuby 1.6.5 (See JRUBY-6170)"
+  raise "Fibers are broken in JRuby 1.6.5 (See JRUBY-6170)"
 end
 
 module ZooKeeper
-    module EventMachine
+  module EventMachine
 
-        class Connection < ::EM::Connection
-            include Protocol
-            include Slf4r::Logger        
+    class Connection < ::EM::Connection
 
-            attr_reader :session
-            unless EventMachine.methods.include?(:set_pending_connect_timeout)
-                def set_pending_connect_timeout(timeout)
+      # Provides :send_data, :receive_data which match EM:Connection's requirements
+      # Also :record_io
+      include Protocol
+      include Slf4r::Logger
 
-                end
-            end  
-
-            def initialize(session,connect_timeout)
-                @fiber = Fiber.current
-                @session = session
-                @connect_timeout = connect_timeout
-                set_pending_connect_timeout(connect_timeout)
-            rescue Exception => ex
-                logger.warn("Exception in initialize",ex)
-            end
-
-            # This "loop" is a means of keeping all the session activity
-            # on the session fiber
-            def read_loop()
-                event,*args = Fiber.yield
-                if (event == :connection_completed)
-                    logger.debug("Connection completed")
-                    session.prime_connection(self)
-
-                    @timer = ::EventMachine.add_timer(session.ping_interval) do
-                        resume(:connect_timer)
-                    end
-
-                    ping = 0
-                    unbound = false
-                    # If session sleeps or waits in here then our yield/resumes are going to get out of sync
-                    until unbound
-                        event,*args = Fiber.yield
-                        logger.debug { "Received event #{event} with #{args}" }
-                        case event
-                        when :connect_timer
-                            if session.connected?
-                                @timer = ::EventMachine.add_periodic_timer(session.ping_interval) do
-                                    resume(:ping_timer) 
-                                end
-                            else
-                                logger.warn("Connection timed out")
-                                break;
-                            end
-                        when :ping_timer
-                            case ping
-                            when 1 then session.ping
-                            when 2 then break;
-                            end
-                            ping += 1
-                        when :receive_records
-                            packet_io = args[0]
-                            ping = 0
-                            session.receive_records(packet_io)
-                        when :unbind
-                            unbound = true
-                        else
-                            logger.error("Unexpected resume - #{event}")
-                            break;
-                        end
-                    end
-                end
-            ensure
-                @fiber = nil
-                ::EventMachine.cancel_timer(@timer) if @timer
-                close_connection() unless unbound
-            end
-
-            def connection_completed()
-                resume(:connection_completed)
-            end
-
-            def receive_records(packet_io)
-                resume(:receive_records,packet_io)
-            end
-
-            def unbind(reason)
-                logger.warn{"Connection #{self} unbound due to #{reason}"} if reason
-                resume(:unbind)
-            end
-
-            private
-            def resume(event,*args)
-                @fiber.resume(event,*args) if @fiber
-            rescue Exception => ex
-                logger.error("Exception resuming #{@fiber} for event #{event}",ex)
-            end
+      unless self.instance_methods.include?(:set_pending_connect_timeout)
+        def set_pending_connect_timeout(timeout)
+          logger.warn { "Unable to set pending connect timeout" }
         end
-    end #module EventMachine
+      end
+
+      def initialize(timeout)
+        super()
+        @unbound = false
+        set_pending_connect_timeout(timeout)
+      rescue StandardError => ex
+        logger.warn("Exception in initialize",ex)
+      end
+
+      def read_available(timeout)
+
+        raise EOFError if unbound?
+
+        @fiber = Fiber.current
+        timer = ::EventMachine.add_timer(timeout)  { resume :read_timer }
+
+        event,*args = Fiber.yield
+        case event
+        when :unbind
+          ::EventMachine.cancel_timer(timer)
+          raise EOFError
+        when :receive_data
+          ::EventMachine.cancel_timer(timer)
+          args[0]
+        when :read_timer
+          nil
+        else
+          raise ProtocolError, "unexpected connection event"
+        end
+      ensure
+        @fiber = nil
+      end
+
+      def send_data(data)
+        super unless unbound?
+      end
+
+      def connection_completed()
+        logger.debug { "Connection completed" }
+      end
+
+      def receive_data(data)
+        resume(:receive_data,data)
+      end
+
+      def unbind(reason)
+        @unbound = true
+        logger.warn{"Connection #{self} unbound due to #{reason}"} if reason
+        resume(:unbind, reason)
+      end
+
+      def close
+        close_connection_after_writing
+      end
+
+      private
+      def unbound?
+        @unbound
+      end
+
+      def resume(event,*args)
+        @fiber.resume(event,*args) if @fiber
+      rescue StandardError => ex
+        logger.error("Exception resuming #{@fiber} for event #{event}",ex)
+      end
+    end
+  end #module EventMachine
 
 end #module ZooKeeper
 
 module Empathy
 
-    module EM
-        module ZooKeeperBinding
-            def self.connect(session,host,port,timeout)
-                conn = ::EventMachine.connect(host,port,ZooKeeper::EventMachine::Connection,session,timeout)
-                conn.read_loop
-            end
-        end #class Binding
-    end #module EM
+  module EM
+    module ZooKeeperBinding
+      def self.connect(host,port,timeout)
+        ::EventMachine.connect(host,port,ZooKeeper::EventMachine::Connection,timeout)
+      end
+    end #class Binding
+  end #module EM
 
-    create_delegate_module('ZooKeeperBinding',:connect)
+  create_delegate_module('ZooKeeperBinding',:connect)
 
 end #module Empathy
 

@@ -17,7 +17,7 @@ describe ZK::ZKBuffer do
     it "should read null values" do
         hex = "ffffffff"
         bin = [ hex ].pack("H*")
-        
+
         buffer = ZKBufferTest.read(bin)
 
         buffer.buff.should == nil
@@ -37,8 +37,8 @@ end
 
 describe ZK::ZKString do
     it "should produce UTF8 encoded strings" do
-       
-        hex = "000000086162636465666768"  
+
+        hex = "000000086162636465666768"
         bin = [ hex ].pack("H*")
         zk_string = ZKStringTest.read(bin)
         zk_string.str.should == "abcdefgh"
@@ -58,7 +58,7 @@ describe ZK::ZKBoolean do
         b.bool.should == false
         # NOTE!! this is unfortunate consequence of Ruby's view of FALSE
         b.bool.should_not be_false
-        
+
         b.to_binary_s.unpack("H*")[0].should == hex
     end
 

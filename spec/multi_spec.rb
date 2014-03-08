@@ -1,7 +1,7 @@
 require 'spec_helper'
 
 def tohex(s)
-    s.unpack("H*")[0]  
+    s.unpack("H*")[0]
 end
 
 describe ZooKeeper::Proto::MultiRequest do
@@ -10,17 +10,17 @@ describe ZooKeeper::Proto::MultiRequest do
 
         java_hex = "ffffffff01ffffffff"
         java_bin = [ java_hex ].pack("H*")
-        
+
         read_request = ZooKeeper::Proto::MultiRequest.read(java_bin)
-        
+
         read_hex = tohex(read_request.to_binary_s)
-        
+
         m = ZooKeeper::Proto::MultiRequest.new()
 
         m.requests << { :header => { :_type => -1, :done => true, :err => -1 } }
 
         m_hex = tohex(m.to_binary_s)
-        m_hex.should == java_hex 
+        m_hex.should == java_hex
         m.should == read_request
     end
 
@@ -54,14 +54,14 @@ describe ZooKeeper::Proto::MultiRequest do
         m.requests << { :header => { :_type => -1, :done => true, :err => -1 } }
 
         m_hex = tohex(m.to_binary_s)
-        m_hex.should == java_hex 
+        m_hex.should == java_hex
         m.should == read_request
     end
 
     it "should decode a response" do
 
         response_hex = "000000010000000000000000062f6d756c7469ffffffff01ffffffff"
-        
+
         response_bin = [ response_hex ].pack("H*")
 
         m = ZooKeeper::Proto::MultiResponse.read(response_bin)
@@ -78,7 +78,7 @@ describe ZooKeeper::Proto::MultiRequest do
         response_hex = "ffffffff000000000000000000ffffffff00ffffff9bffffff9bffffffff01ffffffff"
 
         response_bin = [ response_hex ].pack("H*")
-        
+
         m = ZooKeeper::Proto::MultiResponse.read(response_bin)
         m.responses.size.should == 3
         m.responses[0].header._type.should == -1
@@ -89,5 +89,5 @@ describe ZooKeeper::Proto::MultiRequest do
         m.responses[1].header.err.should == -101
         m.responses[1].response.err.should == -101
         m.responses[2].done?.should be_true
-    end    
+    end
 end

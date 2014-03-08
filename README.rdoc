@@ -51,8 +51,8 @@ Disadvantages:
   # OR with EventMachine
   require 'em_zkruby'
   EventMachine.run do
-     # Magic of Fibers (via Strands) lets us code normally and execute asynchronously
-     Strand.new() do
+     # Magic of Fibers (via Empathy) lets us code normally and execute asynchronously
+     Empathy::EM::Thread.new() do
         begin
             zk = ZooKeeper.connect("localhost:2181")
             #Sync

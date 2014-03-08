@@ -15,7 +15,7 @@ shared_examples_for "performance" do
             6000.times do
                 count += 1
                 this_index = count
-                op = @zk.create("#{path}/","hello", ZK::ACL_OPEN_UNSAFE,:sequential,:ephemeral) { } 
+                op = @zk.create("#{path}/","hello", ZK::ACL_OPEN_UNSAFE,:sequential,:ephemeral) { }
                 op.on_error { |ex| puts "Error @ #{this_index}" if first_error; first_error = false }
                 ZK.pass if pass_every && count % pass_every == 0
             end
@@ -23,7 +23,7 @@ shared_examples_for "performance" do
             op.value
             finish = Time.now
             diff = finish - start
-            puts "Created #{count} in #{diff}" 
+            puts "Created #{count} in #{diff}"
             stat,children = @zk.children(path)
 
             count = 0

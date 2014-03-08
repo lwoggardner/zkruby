@@ -13,7 +13,7 @@ RSpec::Core::RakeTask.new(:perf_spec) do |t|
       t.rspec_opts = "--tag perf"
 end
 
-YARD::Rake::YardocTask.new 
+YARD::Rake::YardocTask.new
 
 Jute::Task.new() do |t|
   t.modules = {

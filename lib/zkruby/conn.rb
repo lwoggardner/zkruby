@@ -1,108 +1,79 @@
 require 'zkruby/socket'
 module ZooKeeper
 
-    class Connection
-        include ZooKeeper::Protocol
-        include Slf4r::Logger
+  class Connection
+    include Slf4r::Logger
+    include ZooKeeper::Protocol
 
-        attr_reader :session
-
-        def initialize(session)
-            @session = session
-        end
-
-        def run(host,port,timeout)
-            @write_queue = Queue.new()
-
-            begin
-                sock = Socket.tcp_connect_timeout(host,port,timeout)
-                sock.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
-                sock.sync=true
-                write_thread = Thread.new(sock) { |sock| write_loop(sock) } 
-                begin
-                    session.prime_connection(self)
-                    read_loop(sock)
-                ensure
-                    disconnect(sock)
-                end
-                write_thread.join
-            rescue Errno::ECONNREFUSED
-                logger.warn{"Connection refused to #{host}:#{port}"}
-            end
-        end
-
-        # This is called from random client threads (including the event loop)
-        def send_data(data)
-            @write_queue.push(data) if data
-        end
-
-        private
-
-        # Since this runs in its very own thread and has no timers
-        # we can use boring blocking IO
-        def write_loop(socket)
-            Thread.current[:name] = "ZK::WriteLoop #{self} #{socket} #{session}"
-            begin
-                while !socket.closed? && data = @write_queue.pop()
-                    socket.write(data) 
-                    logger.debug { "Sent: #{data.unpack("H*")[0]}" }
-                end
-                logger.debug { "Write loop finished" }
-            rescue Exception => ex
-                logger.warn( "Exception in write loop",ex )
-                # Make sure we break out of the read loop
-                disconnect(socket)
-            end
-        end
-
-        def read_loop(socket)
-            ping = 0
-            until socket.closed?
-                begin
-                    data = socket.read_timeout(512,session.ping_interval)
-                    if data.nil?
-                        logger.debug { "Read timed out" }
-                        ping += 1
-                        case ping
-                        when 1 ; session.ping()
-                        when 2 
-                            logger.warn{"No response to ping in #{session.ping_interval}*2"}
-                            break
-                        end
-                    else
-                        logger.debug { "Received (#{data.length})" + data.unpack("H*")[0] }
-                        receive_data(data)
-                        ping = 0
-                    end
-                rescue EOFError
-                    # This is how we expect to end - send a close packet and the
-                    # server closes the socket
-                    logger.debug { "EOF reading from socket" }
-                    break
-                end
-            end
-        end
-
-        # @api protocol
-        def receive_records(packet_io)
-            session.receive_records(packet_io)
-        end
-
-        def disconnect(socket)
-            @write_queue.push(nil)
-            socket.close if socket and !socket.closed?
-        rescue Exception => ex
-            #oh well
-            logger.debug("Exception closing socket",ex)
-        end
+    def initialize(host,port,timeout)
+      super()
+      @write_queue = Queue.new()
+      @socket = Socket.tcp_connect_timeout(host,port,timeout)
+      if socket
+        socket.setsockopt(Socket::IPPROTO_TCP, Socket::TCP_NODELAY, 1)
+        socket.sync=true
+      else
+        logger.warn{"Connect timeout to #{host}:#{port}"} unless socket
+      end
+      write_loop
+    rescue Errno::ECONNREFUSED
+      logger.warn{"Connection refused to #{host}:#{port}"}
     end
+
+    # This is called from random (but synchronized) client threads (including the event loop)
+    def send_data(data)
+      write_queue << data
+    end
+
+    def write_data(data)
+      return unless socket && !socket.closed?
+      socket.write(data) if data
+      logger.debug { "Sent: #{data.unpack("H*")[0]}" }
+    rescue StandardError => ex
+      logger.warn( "Exception writing data to socket",ex )
+      #It is ok to swallow this exception because we'll never get a reply
+      disconnect()
+    end
+
+    def read_available(timeout)
+      return nil unless socket && !socket.closed?
+      #TODO: buffer size option?,read into a fixed buffer?
+      socket.read_timeout(timeout,2048)
+    end
+
+    def close()
+      disconnect
+    end
+
+    def write_loop
+      #MRI is much faster if we write to a queue rather than directly to the socket,
+      #not sure why, maybe thread contention of some kind?
+      Thread.new() do
+        while data = write_queue.pop
+          write_data(data)
+        end
+        logger.debug { "Write queue complete" }
+      end
+    end
+    private
+
+    attr_reader :socket,:write_queue
+
+    def disconnect()
+      write_queue << nil
+      socket.close if socket and !socket.closed?
+    rescue Exception => ex
+      #oh well
+      logger.debug( "Exception closing socket", ex )
+    end
+  end
 end
 
 module ZooKeeperBinding
 
-    # connect and read from the socket until disconnected
-    def self.connect(session,host,port,timeout)
-        ZooKeeper::Connection.new(session).run(host,port,timeout)
-    end
+  # connect and read from the socket until disconnected
+  def self.connect(host,port,timeout)
+    ZooKeeper::Connection.new(host,port,timeout)
+  end
 end
 

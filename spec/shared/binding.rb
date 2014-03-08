@@ -12,7 +12,7 @@ shared_examples_for "a zookeeper client binding" do
     let (:binding) { described_class }
 
     context "A local connection" do
-    
+
         around(:each) do |example|
             ZooKeeper.connect(get_addresses(),:binding => binding) do | zk |
                 @zk = zk

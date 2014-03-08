@@ -21,19 +21,19 @@ Gem::Specification.new do |s|
   # Yard options in .yardopts
 
   s.add_dependency 'slf4r' , '~> 0.4.2'
-  s.add_dependency 'bindata', '~> 1.8.2'
+  s.add_dependency 'bindata', '~> 2.0.0'
 
   s.add_development_dependency 'eventmachine', '>= 0.12.10'
   s.add_development_dependency 'empathy', '>=0.1.0'
   s.add_development_dependency 'logging', '>= 1.4.1'
-  s.add_development_dependency 'ruby-prof'
+  #s.add_development_dependency 'ruby-prof'
 
   s.add_development_dependency("rake")
   s.add_development_dependency("rspec")
   s.add_development_dependency("yard")
   s.add_development_dependency("kramdown")
- 
-  # s.add_development_dependency("jute") 
+
+  # s.add_development_dependency("jute")
   s.add_development_dependency "citrus" , '~> 2.4.0'
- 
+
 end

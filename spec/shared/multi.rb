@@ -22,7 +22,6 @@ shared_examples_for "multi"  do
             data.should == "new multi data"
 
             @zk.exists?(delete_path).should be_nil
-
         end
 
         it "should raise exceptions if the multi op fails" do

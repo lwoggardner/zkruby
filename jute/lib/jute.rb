@@ -28,7 +28,7 @@ class Compiler
     attr_reader :invalid_names
 
     def initialize()
-        @invalid_names = { 
+        @invalid_names = {
             "max" => "maximum",
             "id" => "identity",
             "Id" => "Identity",
@@ -42,7 +42,7 @@ class Compiler
         contents = input.read
         modules = Jute.parse(contents).value
 
-        if (selected_modules.size > 0) 
+        if (selected_modules.size > 0)
             modules = modules.select() do |k,v|
                 selected_modules.has_key?(k)
             end
@@ -58,7 +58,7 @@ class Compiler
 
                     record_info.each do | field_info |
                         field_name, field_type = field_info
-                        field_name = invalid_names[field_name] || field_name 
+                        field_name = invalid_names[field_name] || field_name
                         field_name.to_snake_case!
                         case field_type
                         when Symbol
@@ -76,7 +76,7 @@ class Compiler
 
                 out << " end\n"
             end
-    end 
+    end
 
     def vector(out, name,contained_type)
         case contained_type
@@ -112,9 +112,9 @@ end #class Compiler
 end #module Jute
 if __FILE__ == $0
    compiler = JuteCompiler.new()
-   modules = { 
+   modules = {
        "org.apache.zookeeper.data" => "ZooKeeper::Data",
        "org.apache.zookeeper.proto" => "ZooKeeper::Proto" }
 
-   compiler.compile(STDIN,STDOUT,modules) 
+   compiler.compile(STDIN,STDOUT,modules)
 end

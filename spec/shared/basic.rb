@@ -6,8 +6,7 @@ shared_examples_for "basic integration" do
 
     context("normal functions") do
     it "should return a stat for the root path" do
-
-        stat = @zk.stat("/") 
+        stat = @zk.stat("/")
         stat.should be_a ZooKeeper::Data::Stat
     end
 
@@ -74,7 +73,7 @@ shared_examples_for "basic integration" do
                 ZooKeeper::Error::NO_NODE.should === ex
                 ex.message.should =~ /\/anunknownpath/
                 ex.message.should =~ /no_node/
-                skip = if defined?(JRUBY_VERSION) then 2 else 1 end
+                skip = if defined?(JRUBY_VERSION) then 1 else 1 end
                 ex.backtrace[skip..-1].should == get_caller
             end
         end
@@ -82,7 +81,7 @@ shared_examples_for "basic integration" do
         it "should capture ZK error for asynchronous method" do
             get_caller = caller
             op = @zk.get("/an/unknown/path") { raise "callback invoked unexpectedly" }
-           
+
             begin
                 op.value
                 fail "Expected no node error"
@@ -162,7 +161,7 @@ shared_examples_for "basic integration" do
         it "should randomly shuffle the address list"
 
         it "should randomly delay reconnections within one seventh of the timeout"
-    end    
+    end
 
 
     context "auto reconnect" do

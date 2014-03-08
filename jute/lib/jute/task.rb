@@ -9,7 +9,7 @@ class Jute::Task < Rake::TaskLib
    attr_accessor :pathmap
 
    def initialize name = :jute
-        
+
         defaults
 
         @name = name
@@ -47,7 +47,7 @@ class Jute::Task < Rake::TaskLib
    end
 
    def compile_jute(source,target)
- 
+
       @jute_compiler = ::Jute::Compiler.new() unless @jute_compiler
 
       File.open(source) do |input|
